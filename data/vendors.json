@@ -1,0 +1,26 @@
+[
+	{
+		"vendor": "Hikvision",
+		"model_prefix": "DS-2CD",
+		"firmware": "5.6.18",
+		"default_services": ["http", "rtsp", "onvif"]
+	},
+	{
+		"vendor": "Dahua",
+		"model_prefix": "IPC-HFW",
+		"firmware": "3.210",
+		"default_services": ["http", "rtsp", "telnet"]
+	},
+	{
+		"vendor": "Axis",
+		"model_prefix": "M30",
+		"firmware": "10.12",
+		"default_services": ["http", "https", "onvif"]
+	},
+	{
+		"vendor": "Uniview",
+		"model_prefix": "IPC23",
+		"firmware": "2.4.1",
+		"default_services": ["http", "rtsp", "telnet"]
+	}
+]

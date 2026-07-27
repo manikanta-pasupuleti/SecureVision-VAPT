@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Devices{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Device inventory</p>
+    <p class="muted">This list aggregates every device discovered by the demo assessment engine.</p>
+  </section>
+
+  <section class="table-panel">
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>IP</th>
+          <th>Vendor</th>
+          <th>Firmware</th>
+          <th>Services</th>
+          <th>Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+          <tr>
+            <td>#{{ device.report_id }} <span class="muted">{{ device.created_at }}</span></td>
+            <td><a href="{{ url_for('devices.device_detail', report_id=device.report_id, ip_address=device.ip_address) }}">{{ device.ip_address }}</a></td>
+            <td>{{ device.vendor }} {{ device.model }}</td>
+            <td>{{ device.firmware_version }}</td>
+            <td>{{ device.services | join(', ') }}</td>
+            <td>{{ device.risk_score }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Alerts{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Alert Management</p>
+    <p class="muted">Monitor security events, risk thresholds, and vulnerability updates.</p>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span class="muted">Total Alerts</span><strong id="totalAlerts">0</strong></div>
+    <div class="stat"><span class="muted">Unacknowledged</span><strong id="unacknowledgedAlerts" style="color: #ff9ab3;">0</strong></div>
+    <div class="stat"><span class="muted">Critical</span><strong id="criticalAlerts" style="color: #ff6f91;">0</strong></div>
+    <div class="stat"><span class="muted">High</span><strong id="highAlerts" style="color: #ff9ab3;">0</strong></div>
+  </section>
+
+  <section class="panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <p class="section-title">Recent Alerts</p>
+      <button onclick="refreshAlerts()" class="ghost-button">Refresh</button>
+    </div>
+    <div id="alertsContainer" style="display: grid; gap: 0.8rem;"></div>
+  </section>
+
+  <section class="panel">
+    <p class="section-title">Alert Thresholds</p>
+    <div id="thresholdsContainer" style="display: grid; gap: 1rem;"></div>
+    <button onclick="saveThresholds()" class="button" style="margin-top: 1rem;">Save Thresholds</button>
+  </section>
+
+  <script>
+    // Load alerts on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      refreshAlerts();
+      loadThresholds();
+      // Refresh every 30 seconds
+      setInterval(refreshAlerts, 30000);
+    });
+
+    function refreshAlerts() {
+      // Get summary
+      fetch('/api/alerts/summary')
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('totalAlerts').textContent = data.total;
+          document.getElementById('unacknowledgedAlerts').textContent = data.unacknowledged;
+          document.getElementById('criticalAlerts').textContent = data.by_severity.critical || 0;
+          document.getElementById('highAlerts').textContent = data.by_severity.high || 0;
+        });
+
+      // Get alerts list
+      fetch('/api/alerts/list?limit=50')
+        .then(r => r.json())
+        .then(data => {
+          const container = document.getElementById('alertsContainer');
+          
+          if (data.alerts.length === 0) {
+            container.innerHTML = '<p class="muted">No alerts</p>';
+            return;
+          }
+
+          container.innerHTML = data.alerts.map(alert => `
+            <div class="mini-card" style="padding: 1.2rem; border-left: 4px solid ${getSeverityColor(alert.severity)};">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                  <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                    <span class="badge ${alert.severity}">${alert.severity.toUpperCase()}</span>
+                    <span class="badge" style="background: rgba(255, 255, 255, 0.1);">${alert.type}</span>
+                    ${alert.acknowledged ? '<span class="badge" style="background: rgba(98, 210, 111, 0.14); color: #b1f1b7;">Acknowledged</span>' : ''}
+                  </div>
+                  <strong>${alert.title}</strong>
+                  <p class="muted" style="margin: 0.5rem 0;">${alert.description}</p>
+                  ${alert.device_ip ? `<p class="muted" style="margin: 0.3rem 0;"><strong>Device:</strong> ${alert.device_ip}</p>` : ''}
+                  <p class="muted" style="margin: 0.3rem 0; font-size: 0.85rem;">${new Date(alert.timestamp).toLocaleString()}</p>
+                </div>
+                ${!alert.acknowledged ? `
+                  <button onclick="acknowledgeAlert('${alert.id}')" class="ghost-button" style="padding: 0.5rem 0.7rem; font-size: 0.85rem; white-space: nowrap;">Acknowledge</button>
+                ` : ''}
+              </div>
+            </div>
+          `).join('');
+        })
+        .catch(err => console.error('Error loading alerts:', err));
+    }
+
+    function acknowledgeAlert(alertId) {
+      fetch(`/api/alerts/${alertId}/acknowledge`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({acknowledged_by: 'user'})
+      })
+      .then(r => r.json())
+      .then(data => {
+        refreshAlerts();
+      })
+      .catch(err => console.error('Error acknowledging alert:', err));
+    }
+
+    function getSeverityColor(severity) {
+      const colors = {
+        'critical': '#ff6f91',
+        'high': '#ff9ab3',
+        'medium': '#ffd166',
+        'low': '#62d26f',
+        'info': '#4dd6c0'
+      };
+      return colors[severity] || '#8fa3bf';
+    }
+
+    function loadThresholds() {
+      fetch('/api/alerts/thresholds')
+        .then(r => r.json())
+        .then(data => {
+          const container = document.getElementById('thresholdsContainer');
+          container.innerHTML = `
+            <div>
+              <label>
+                <span class="muted">Critical Threshold (Risk Score)</span>
+                <input type="number" id="criticalThreshold" value="${data.critical}" min="0" max="100" style="width: 100%; margin-top: 0.3rem;">
+              </label>
+            </div>
+            <div>
+              <label>
+                <span class="muted">High Threshold (Risk Score)</span>
+                <input type="number" id="highThreshold" value="${data.high}" min="0" max="100" style="width: 100%; margin-top: 0.3rem;">
+              </label>
+            </div>
+            <div>
+              <label>
+                <span class="muted">Medium Threshold (Risk Score)</span>
+                <input type="number" id="mediumThreshold" value="${data.medium}" min="0" max="100" style="width: 100%; margin-top: 0.3rem;">
+              </label>
+            </div>
+          `;
+        })
+        .catch(err => console.error('Error loading thresholds:', err));
+    }
+
+    function saveThresholds() {
+      const thresholds = {
+        critical: parseInt(document.getElementById('criticalThreshold').value),
+        high: parseInt(document.getElementById('highThreshold').value),
+        medium: parseInt(document.getElementById('mediumThreshold').value)
+      };
+
+      fetch('/api/alerts/thresholds', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(thresholds)
+      })
+      .then(r => r.json())
+      .then(data => {
+        alert('Thresholds updated successfully');
+      })
+      .catch(err => console.error('Error saving thresholds:', err));
+    }
+  </script>
+{% endblock %}

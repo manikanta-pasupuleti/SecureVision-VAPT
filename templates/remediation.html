@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Remediation Guidance{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Remediation Guidance</p>
+    <p class="muted">Step-by-step instructions for fixing common surveillance device vulnerabilities.</p>
+  </section>
+
+  <section class="panel">
+    <p class="section-title">Available Workflows</p>
+    <div class="stack" id="workflowsContainer" style="flex-direction: column; gap: 0.8rem;"></div>
+  </section>
+
+  <div id="workflowDetail" style="display: none;">
+    <section class="panel">
+      <p class="section-title" id="workflowTitle"></p>
+      <div class="meta-row" id="workflowMeta"></div>
+      
+      <div style="margin-top: 1.5rem;">
+        <p class="section-title" style="font-size: 1.1rem;">Steps</p>
+        <div id="stepsContainer" style="display: grid; gap: 1rem;"></div>
+      </div>
+
+      <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(255, 255, 255, 0.03); border-radius: 1rem;">
+        <p><strong>Verification:</strong> <span id="verificationText"></span></p>
+      </div>
+
+      <div style="margin-top: 1rem; padding: 1rem; background: rgba(255, 111, 145, 0.08); border-radius: 1rem;">
+        <p><strong>Rollback Plan:</strong> <span id="rollbackText"></span></p>
+      </div>
+
+      <button onclick="closeWorkflowDetail()" class="ghost-button" style="margin-top: 1.5rem;">Back to Workflows</button>
+    </section>
+  </div>
+
+  <script>
+    // Load all workflows
+    fetch('/api/remediation/workflows')
+      .then(r => r.json())
+      .then(data => {
+        const container = document.getElementById('workflowsContainer');
+        container.innerHTML = data.workflows.map(wf => `
+          <div class="mini-card" style="cursor: pointer; padding: 1.2rem;" onclick="loadWorkflow('${wf.id}')">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div>
+                <strong>${wf.title}</strong>
+                <p class="muted" style="margin: 0.5rem 0 0 0;">${wf.steps} steps • ${wf.time_estimate}</p>
+              </div>
+              <span class="badge ${wf.severity.toLowerCase()}">${wf.severity}</span>
+            </div>
+          </div>
+        `).join('');
+      })
+      .catch(err => console.error('Error loading workflows:', err));
+
+    function loadWorkflow(workflowId) {
+      fetch(`/api/remediation/workflow/${workflowId}`)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('workflowsContainer').parentElement.style.display = 'none';
+          document.getElementById('workflowDetail').style.display = 'block';
+          
+          document.getElementById('workflowTitle').textContent = data.title;
+          document.getElementById('workflowMeta').innerHTML = `
+            <span class="pill">Severity: ${data.severity}</span>
+            <span class="pill">Time: ${data.time_estimate}</span>
+            <span class="pill">Steps: ${data.steps.length}</span>
+          `;
+          
+          document.getElementById('stepsContainer').innerHTML = data.steps.map(step => `
+            <div style="padding: 1rem; background: rgba(255, 255, 255, 0.03); border-left: 3px solid #4dd6c0; border-radius: 0.5rem;">
+              <div style="display: flex; gap: 1rem;">
+                <div style="min-width: 40px; width: 40px; height: 40px; background: #4dd6c0; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #07111f; font-weight: bold;">
+                  ${step.step}
+                </div>
+                <div style="flex: 1;">
+                  <strong>${step.action}</strong>
+                  <p class="muted" style="margin: 0.3rem 0;">${step.details}</p>
+                  <div style="margin-top: 0.5rem; padding: 0.7rem; background: rgba(0, 0, 0, 0.3); border-radius: 0.5rem; font-family: monospace; font-size: 0.9rem;">
+                    ${step.commands.map(cmd => `<div>${cmd}</div>`).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `).join('');
+          
+          document.getElementById('verificationText').textContent = data.verification;
+          document.getElementById('rollbackText').textContent = data.rollback;
+        })
+        .catch(err => console.error('Error loading workflow:', err));
+    }
+
+    function closeWorkflowDetail() {
+      document.getElementById('workflowDetail').style.display = 'none';
+      document.getElementById('workflowsContainer').parentElement.style.display = 'block';
+    }
+  </script>
+{% endblock %}

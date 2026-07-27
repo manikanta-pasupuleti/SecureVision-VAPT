@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Device {{ device.ip_address }}{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Device detail</p>
+    <div class="meta-row">
+      <span class="pill">Report #{{ device.report_id }}</span>
+      <span class="pill">{{ device.created_at }}</span>
+      <span class="pill">Target: {{ device.target_spec }}</span>
+      <span class="pill">Report risk: {{ device.report_risk_score }}</span>
+    </div>
+  </section>
+
+  <section class="grid-2">
+    <div class="table-panel">
+      <p class="section-title">Fingerprint</p>
+      <div class="stack">
+        <div class="mini-card"><span class="muted">IP address</span><strong>{{ device.ip_address }}</strong></div>
+        <div class="mini-card"><span class="muted">Vendor / model</span><strong>{{ device.vendor }} {{ device.model }}</strong></div>
+        <div class="mini-card"><span class="muted">Firmware</span><strong>{{ device.firmware_version }}</strong></div>
+        <div class="mini-card"><span class="muted">Services</span><strong>{{ device.services | join(', ') }}</strong></div>
+        <div class="mini-card"><span class="muted">Risk score</span><strong>{{ device.risk_score }}/100</strong></div>
+      </div>
+    </div>
+
+    <div class="table-panel">
+      <p class="section-title">Findings</p>
+      <div class="stack">
+        {% for finding in device.findings %}
+          <div class="mini-card">
+            <div class="finding-head">
+              <span class="badge {{ finding.severity }}">{{ finding.severity }}</span>
+              <strong>{{ finding.title }}</strong>
+            </div>
+            <p>{{ finding.description }}</p>
+            <p class="muted"><strong>Remediation:</strong> {{ finding.remediation }}</p>
+            <p class="muted"><strong>Evidence:</strong> {{ finding.evidence }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

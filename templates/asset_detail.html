@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Asset {{ asset.ip_address }}{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Asset Detail</p>
+    <div class="meta-row">
+      <span class="pill">{{ asset.ip_address }}</span>
+      <span class="pill">{{ asset.vendor }} {{ asset.model }}</span>
+      <span class="pill">{{ asset.status }}</span>
+    </div>
+  </section>
+
+  <section class="grid-2">
+    <div class="table-panel">
+      <p class="section-title">Current State</p>
+      <div class="stack">
+        <div class="mini-card"><span class="muted">IP Address</span><strong>{{ asset.ip_address }}</strong></div>
+        <div class="mini-card"><span class="muted">Vendor / Model</span><strong>{{ asset.vendor }} {{ asset.model }}</strong></div>
+        <div class="mini-card"><span class="muted">Firmware</span><strong>{{ asset.current_firmware or 'Unknown' }}</strong></div>
+        <div class="mini-card"><span class="muted">Risk Score</span><strong>{{ asset.current_risk_score }}/100</strong></div>
+        <div class="mini-card"><span class="muted">Status</span><strong>{{ asset.status }}</strong></div>
+        <div class="mini-card"><span class="muted">First Seen</span><strong>{{ asset.first_seen }}</strong></div>
+        <div class="mini-card"><span class="muted">Last Seen</span><strong>{{ asset.last_seen }}</strong></div>
+      </div>
+    </div>
+
+    <div class="table-panel">
+      <p class="section-title">Metadata</p>
+      <form class="form-grid" method="post" action="{{ url_for('assets.update_metadata', asset_id=asset.id) }}">
+        <label>
+          Owner
+          <input type="text" name="owner" value="{{ asset.owner or '' }}" placeholder="Device owner or team">
+        </label>
+        <label>
+          Location
+          <input type="text" name="location" value="{{ asset.location or '' }}" placeholder="Physical location or building">
+        </label>
+        <label>
+          Notes
+          <textarea name="notes" placeholder="Additional notes about this device">{{ asset.notes or '' }}</textarea>
+        </label>
+        <button class="button" type="submit">Update Metadata</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="table-panel">
+    <p class="section-title">Change History</p>
+    {% if asset.history %}
+      <div class="stack">
+        {% for event in asset.history %}
+          <div class="mini-card">
+            <div class="finding-head">
+              <strong>{{ event.event_type | replace('_', ' ') | title }}</strong>
+              <span class="muted">{{ event.timestamp }}</span>
+            </div>
+            {% if event.event_type == 'firmware_change' %}
+              <p>Firmware changed from <strong>{{ event.old_value or 'Unknown' }}</strong> to <strong>{{ event.new_value }}</strong></p>
+            {% elif event.event_type == 'risk_change' %}
+              <p>Risk score changed from <strong>{{ event.old_value }}</strong> to <strong>{{ event.new_value }}</strong></p>
+            {% else %}
+              <p>{{ event.event_type }}: {{ event.old_value }} → {{ event.new_value }}</p>
+            {% endif %}
+            {% if event.report_id %}
+              <p class="muted">Report #{{ event.report_id }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">No history recorded yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}

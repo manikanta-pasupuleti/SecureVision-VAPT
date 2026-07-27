@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}SecureVision VAPT | Assets{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <p class="section-title">Asset Inventory</p>
+    <p class="muted">Persistent device records with history tracking.</p>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span class="muted">Total Assets</span><strong>{{ asset_stats.total_assets }}</strong></div>
+    <div class="stat"><span class="muted">Active</span><strong>{{ asset_stats.active_assets }}</strong></div>
+    <div class="stat"><span class="muted">High Risk</span><strong>{{ asset_stats.high_risk_assets }}</strong></div>
+    <div class="stat"><span class="muted">Critical</span><strong>{{ asset_stats.critical_risk_assets }}</strong></div>
+  </section>
+
+  <section class="table-panel">
+    <table>
+      <thead>
+        <tr>
+          <th>IP Address</th>
+          <th>Vendor / Model</th>
+          <th>Firmware</th>
+          <th>Risk Score</th>
+          <th>Status</th>
+          <th>Last Seen</th>
+          <th>Owner</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asset in assets %}
+          <tr>
+            <td><a href="{{ url_for('assets.asset_detail', asset_id=asset.id) }}">{{ asset.ip_address }}</a></td>
+            <td>{{ asset.vendor }} {{ asset.model }}</td>
+            <td>{{ asset.current_firmware or 'Unknown' }}</td>
+            <td>{{ asset.current_risk_score }}</td>
+            <td><span class="pill">{{ asset.status }}</span></td>
+            <td class="muted">{{ asset.last_seen }}</td>
+            <td>{{ asset.owner or '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}
