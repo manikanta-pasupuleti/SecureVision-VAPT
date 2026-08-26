@@ -131,6 +131,257 @@
         </div>
       </div>
     </section>
+
+    <!-- SECURITY INTELLIGENCE -->
+    <section class="panel" style="margin-top: 1rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <div>
+          <p class="section-title" style="margin-bottom:0.25rem;">Security Intelligence</p>
+          <p class="muted" style="margin:0;">
+            Correlated CVEs, firmware intelligence, exposed services, attack surface and remediation guidance.
+          </p>
+        </div>
+        <span class="pill">Intelligence analysis</span>
+      </div>
+
+      {% for device in report.devices %}
+        {% set intel = device.intelligence or {} %}
+        {% set firmware = intel.firmware_analysis or {} %}
+        {% set os_info = intel.os_info or {} %}
+        {% set exposure = intel.exposure_score or {} %}
+        {% set cves = intel.cve_matches or [] %}
+        {% set services = intel.enriched_services or [] %}
+        {% set recommendations = intel.recommendations or [] %}
+        {% set attack_surface = intel.attack_surface or [] %}
+
+        <div style="margin-top:1.2rem; padding-top:1.2rem; border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+            <div>
+              <strong style="font-size:1.05rem;">{{ device.ip_address }}</strong>
+              <span class="muted"> — {{ device.vendor }} {{ device.model }}</span>
+            </div>
+            <span class="pill">Risk {{ device.risk_score }}/100</span>
+          </div>
+
+          <!-- Intelligence overview -->
+          <div class="summary-bar" style="margin-top:0.8rem;">
+            <div class="mini-card">
+              <span class="muted">CVE Matches</span>
+              <strong>{{ cves|length }}</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">Open Services</span>
+              <strong>{{ device.services|length }}</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">Unencrypted</span>
+              <strong>{{ exposure.get('unencrypted_count', 0) }}</strong>
+            </div>
+            <div class="mini-card">
+              <span class="muted">High Risk Services</span>
+              <strong>{{ exposure.get('high_risk_count', 0) }}</strong>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-top:0.8rem;">
+            <!-- Firmware / OS -->
+            <div class="mini-card">
+              <strong>Firmware & Platform Intelligence</strong>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Vendor: <strong>{{ firmware.get('vendor', device.vendor or 'Unknown') }}</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Current version: <strong>{{ firmware.get('current_version', device.firmware_version or 'Unknown') }}</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Latest known: <strong>{{ firmware.get('latest_version', 'unknown') }}</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Outdated:
+                <strong>{{ 'Yes' if firmware.get('is_outdated') else 'No' }}</strong>
+                &nbsp;|&nbsp;
+                EOL:
+                <strong>{{ 'Yes' if firmware.get('is_eol') else 'No' }}</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0;">
+                Platform:
+                <strong>{{ os_info.get('platform', 'Unknown') }}</strong>
+                {% if os_info.get('architecture') %}
+                  / {{ os_info.get('architecture') }}
+                {% endif %}
+              </p>
+              {% if firmware.get('upgrade_path') %}
+                <p style="margin-bottom:0; margin-top:0.7rem;">
+                  <strong>Upgrade path:</strong>
+                  {% set fw_url = firmware.get('upgrade_path') %}
+                  {% if fw_url.startswith('http://') or fw_url.startswith('https://') %}
+                    <a href="{{ fw_url }}" target="_blank" rel="noopener noreferrer" style="color:#4dd6c0; text-decoration:underline;">
+                      Open official firmware / reference
+                    </a>
+                    <span class="muted"> — {{ fw_url }}</span>
+                  {% else %}
+                    {{ fw_url }}
+                  {% endif %}
+                </p>
+              {% endif %}
+            </div>
+
+            <!-- Exposure -->
+            <div class="mini-card">
+              <strong>Exposure Analysis</strong>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Exposure score:
+                <strong>{{ exposure.get('score', 0) }}/100</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                High: {{ exposure.get('breakdown', {}).get('high', 0) }}
+                &nbsp; Medium: {{ exposure.get('breakdown', {}).get('medium', 0) }}
+                &nbsp; Low: {{ exposure.get('breakdown', {}).get('low', 0) }}
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Device type: <strong>{{ os_info.get('device_type', 'Unknown') }}</strong>
+              </p>
+              <p class="muted" style="margin-bottom:0;">
+                Detection confidence: <strong>{{ os_info.get('confidence', 'Unknown') }}</strong>
+              </p>
+              {% if os_info.get('indicators') %}
+                <div style="margin-top:0.7rem;">
+                  <strong>Detection indicators</strong>
+                  {% for indicator in os_info.get('indicators', []) %}
+                    <p class="muted" style="margin:0.25rem 0 0;">• {{ indicator }}</p>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- CVE intelligence -->
+          <div class="mini-card" style="margin-top:0.8rem;">
+            <strong>Known Vulnerabilities / CVE Intelligence</strong>
+
+            {% if cves %}
+              <div class="stack" style="margin-top:0.7rem;">
+                {% for cve in cves %}
+                  <div style="padding:0.8rem; border-radius:12px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06);">
+                    <div class="finding-head">
+                      <span class="badge {{ cve.get('severity', 'info') }}">{{ cve.get('severity', 'info') }}</span>
+                      <strong>{{ cve.get('cve_id', 'Unknown CVE') }} — {{ cve.get('title', 'Vulnerability') }}</strong>
+                    </div>
+                    <p style="margin-bottom:0.35rem;">{{ cve.get('description', '') }}</p>
+                    <p class="muted" style="margin-bottom:0.2rem;">
+                      CVSS: <strong>{{ cve.get('cvss_score', 'N/A') }}</strong>
+                      &nbsp;|&nbsp;
+                      Exploitability: <strong>{{ cve.get('exploitability', 'unknown') }}</strong>
+                    </p>
+                    {% if cve.get('matched_by') %}
+                      <p class="muted" style="margin:0;">
+                        Evidence: {{ cve.get('matched_by') }}
+                      </p>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0.7rem 0 0;">
+                No CVE matches were returned for this device fingerprint.
+              </p>
+            {% endif %}
+          </div>
+
+          <!-- Enriched services -->
+          <div class="mini-card" style="margin-top:0.8rem;">
+            <strong>Service Security Analysis</strong>
+
+            {% if services %}
+              <div style="overflow-x:auto; margin-top:0.7rem;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Port</th>
+                      <th>Encryption</th>
+                      <th>Authentication</th>
+                      <th>Risk</th>
+                      <th>Attack Vector</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for service in services %}
+                      <tr>
+                        <td>
+                          <strong>{{ service.get('name', 'unknown') }}</strong>
+                          {% if service.get('product') %}
+                            <div class="muted">{{ service.get('product') }} {{ service.get('version', '') }}</div>
+                          {% endif %}
+                        </td>
+                        <td>{{ service.get('port', 'N/A') }}</td>
+                        <td>
+                          {% if service.get('encrypted') is sameas false %}
+                            <span class="badge high">unencrypted</span>
+                          {% elif service.get('encrypted') is sameas true %}
+                            <span class="badge low">encrypted</span>
+                          {% else %}
+                            <span class="badge info">unknown</span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {% if service.get('auth_required') is sameas true %}
+                            Required
+                          {% elif service.get('auth_required') is sameas false %}
+                            <span class="badge high">Not required</span>
+                          {% else %}
+                            Unknown
+                          {% endif %}
+                        </td>
+                        <td>
+                          <span class="badge {{ service.get('exposure_risk', 'info') }}">
+                            {{ service.get('exposure_risk', 'unknown') }}
+                          </span>
+                        </td>
+                        <td>{{ service.get('attack_vector', 'network') }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="muted" style="margin:0.7rem 0 0;">No enriched service intelligence available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Attack surface -->
+          <div class="grid-2" style="margin-top:0.8rem;">
+            <div class="mini-card">
+              <strong>Attack Surface</strong>
+              {% if attack_surface %}
+                {% for item in attack_surface %}
+                  <p class="muted" style="margin:0.45rem 0 0;">• {{ item }}</p>
+                {% endfor %}
+              {% else %}
+                <p class="muted" style="margin:0.5rem 0 0;">No additional attack-surface indicators.</p>
+              {% endif %}
+            </div>
+
+            <div class="mini-card">
+              <strong>Security Recommendations</strong>
+              {% if recommendations %}
+                {% for rec in recommendations[:5] %}
+                  <div style="margin-top:0.65rem;">
+                    <div class="finding-head">
+                      <span class="badge {{ rec.get('priority', 'LOW')|lower }}">{{ rec.get('priority', 'LOW') }}</span>
+                      <strong>{{ rec.get('title', 'Security recommendation') }}</strong>
+                    </div>
+                    <p class="muted" style="margin:0.25rem 0 0;">{{ rec.get('action', rec.get('description', '')) }}</p>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <p class="muted" style="margin:0.5rem 0 0;">No recommendations generated.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </section>
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

@@ -10,56 +10,200 @@ VENDORS_PATH = DATA_DIR / "vendors.json"
 DEFAULT_CREDENTIALS_PATH = DATA_DIR / "default_credentials.json"
 
 FALLBACK_VENDORS = [
-    {"vendor": "Hikvision", "model_prefix": "DS-2CD", "firmware": "5.6.18", "default_services": ["http", "rtsp", "onvif"]},
-    {"vendor": "Dahua", "model_prefix": "IPC-HFW", "firmware": "3.210", "default_services": ["http", "rtsp", "telnet"]},
-    {"vendor": "Axis", "model_prefix": "M30", "firmware": "10.12", "default_services": ["http", "https", "onvif"]},
-    {"vendor": "Uniview", "model_prefix": "IPC23", "firmware": "2.4.1", "default_services": ["http", "rtsp", "telnet"]},
+    {
+        "vendor": "Hikvision",
+        "model_prefix": "DS-2CD",
+        "firmware": "5.6.18",
+        "default_services": ["http", "rtsp", "onvif"],
+    },
+    {
+        "vendor": "Dahua",
+        "model_prefix": "IPC-HFW",
+        "firmware": "3.210",
+        "default_services": ["http", "rtsp", "telnet"],
+    },
+    {
+        "vendor": "Axis",
+        "model_prefix": "M30",
+        "firmware": "10.12",
+        "default_services": ["http", "https", "onvif"],
+    },
+    {
+        "vendor": "Uniview",
+        "model_prefix": "IPC23",
+        "firmware": "2.4.1",
+        "default_services": ["http", "rtsp", "telnet"],
+    },
 ]
 
 
 def fingerprint_device(device):
-    ip_address = device["ip_address"]
-    fingerprint_seed = int(sha1(ip_address.encode("utf-8")).hexdigest(), 16)
-    vendor_profile = _load_vendor_profiles()[fingerprint_seed % len(_load_vendor_profiles())]
-    last_octet = int(ip_address.split(".")[-1]) if ip_address.count(".") == 3 else 0
+    """
+    Build a SecureVision device fingerprint.
 
-    services = list(vendor_profile["default_services"])
+    If Nmap port information is available, observed services are
+    preferred. Otherwise, the existing deterministic simulation
+    is used.
+    """
+
+    ip_address = device["ip_address"]
+
+    # ---------------------------------------------------------
+    # LIVE / NMAP INFORMATION
+    # ---------------------------------------------------------
+
+    nmap_ports = device.get("ports", [])
+
+    if nmap_ports:
+        return _fingerprint_from_nmap(device, nmap_ports)
+
+    # ---------------------------------------------------------
+    # SIMULATION MODE
+    # ---------------------------------------------------------
+
+    return _fingerprint_simulated(device)
+
+
+def _fingerprint_from_nmap(device, nmap_ports):
+    """
+    Build a fingerprint using real Nmap observations.
+    """
+
+    ip_address = device["ip_address"]
+
+    observed_services = []
+
+    for port_info in nmap_ports:
+        if port_info.get("state") != "open":
+            continue
+
+        service = port_info.get("service", "").strip().lower()
+
+        if service:
+            observed_services.append(service)
+
+    observed_services = _dedupe(observed_services)
+
+    # Keep the raw Nmap information so that reports and
+    # future fingerprinting logic can use the evidence.
+    device_profile = {
+        **device,
+
+        "services": observed_services,
+
+        "vendor": "Unknown",
+        "model": "Unknown",
+        "firmware_version": "Unknown",
+
+        "auth_mode": "unknown",
+        "default_credentials": [],
+
+        "exposure_profile": {
+            "has_telnet": "telnet" in observed_services,
+            "has_rtsp": "rtsp" in observed_services,
+            "has_onvif": "onvif" in observed_services,
+            "uses_https": "https" in observed_services,
+        },
+
+        "fingerprint_source": "nmap",
+    }
+
+    return device_profile
+
+
+def _fingerprint_simulated(device):
+    """
+    Existing deterministic simulation logic.
+    """
+
+    ip_address = device["ip_address"]
+
+    fingerprint_seed = int(
+        sha1(ip_address.encode("utf-8")).hexdigest(),
+        16,
+    )
+
+    vendor_profiles = _load_vendor_profiles()
+
+    vendor_profile = vendor_profiles[
+        fingerprint_seed % len(vendor_profiles)
+    ]
+
+    last_octet = (
+        int(ip_address.split(".")[-1])
+        if ip_address.count(".") == 3
+        else 0
+    )
+
+    services = list(
+        vendor_profile["default_services"]
+    )
+
     if last_octet % 2 == 0:
         services.append("onvif")
+
     if last_octet % 3 == 0:
         services.append("telnet")
+
     if last_octet % 5 == 0:
         services.append("https")
 
     services = _dedupe(services)
-    default_credentials = _default_credentials_for(vendor_profile["vendor"])
-    auth_mode = "basic" if "telnet" in services else "digest"
+
+    default_credentials = _default_credentials_for(
+        vendor_profile["vendor"]
+    )
+
+    auth_mode = (
+        "basic"
+        if "telnet" in services
+        else "digest"
+    )
 
     return {
         **device,
+
         "vendor": vendor_profile["vendor"],
-        "model": f"{vendor_profile['model_prefix']}-{(last_octet % 9) + 1}",
+
+        "model": (
+            f"{vendor_profile['model_prefix']}-"
+            f"{(last_octet % 9) + 1}"
+        ),
+
         "firmware_version": vendor_profile["firmware"],
+
         "services": services,
+
         "auth_mode": auth_mode,
+
         "default_credentials": default_credentials,
+
         "exposure_profile": {
             "has_telnet": "telnet" in services,
             "has_rtsp": "rtsp" in services,
             "has_onvif": "onvif" in services,
             "uses_https": "https" in services,
         },
+
+        "fingerprint_source": "simulation",
     }
 
 
 def _load_vendor_profiles():
     if VENDORS_PATH.exists():
         try:
-            data = json.loads(VENDORS_PATH.read_text(encoding="utf-8"))
+            data = json.loads(
+                VENDORS_PATH.read_text(
+                    encoding="utf-8"
+                )
+            )
+
             if isinstance(data, list) and data:
                 return data
+
         except json.JSONDecodeError:
             pass
+
     return FALLBACK_VENDORS
 
 
@@ -68,22 +212,56 @@ def _default_credentials_for(vendor_name):
         return []
 
     try:
-        data = json.loads(DEFAULT_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+        data = json.loads(
+            DEFAULT_CREDENTIALS_PATH.read_text(
+                encoding="utf-8"
+            )
+        )
+
     except json.JSONDecodeError:
         return []
 
     matches = []
+
     for item in data:
-        if item.get("vendor", "").lower() == vendor_name.lower():
+        if (
+            item.get("vendor", "").lower()
+            == vendor_name.lower()
+        ):
             matches.append(item)
+
     return matches
 
 
 def _dedupe(items):
     seen = set()
     ordered = []
+
     for item in items:
         if item not in seen:
             ordered.append(item)
             seen.add(item)
+
     return ordered
+
+if __name__ == "__main__":
+    test_device = {
+        "ip_address": "127.0.0.1",
+        "discovered": True,
+        "source": "127.0.0.1",
+        "host_status": "up",
+        "ports": [
+            {
+                "port": 3306,
+                "protocol": "tcp",
+                "state": "open",
+                "service": "mysql",
+                "product": "MySQL",
+                "version": "8.0.44",
+            }
+        ],
+    }
+
+    result = fingerprint_device(test_device)
+
+    print(result)

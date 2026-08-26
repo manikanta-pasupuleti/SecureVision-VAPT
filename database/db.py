@@ -186,6 +186,32 @@ def init_db():
             connection.commit()
 
 
+def prune_target_report_history(target_spec, keep_report_id=None):
+    """Keep only the newest report for a given target in the report history."""
+    if target_spec is None:
+        return
+
+    normalized = str(target_spec).strip()
+    if not normalized:
+        return
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT id FROM reports WHERE target_spec = ? AND (? IS NULL OR id != ?) ORDER BY id ASC",
+            (normalized, keep_report_id, keep_report_id),
+        ).fetchall()
+
+        stale_ids = [row["id"] for row in rows]
+        if not stale_ids:
+            return
+
+        placeholders = ", ".join("?" for _ in stale_ids)
+        connection.execute(f"DELETE FROM findings WHERE report_id IN ({placeholders})", stale_ids)
+        connection.execute(f"DELETE FROM devices WHERE report_id IN ({placeholders})", stale_ids)
+        connection.execute(f"DELETE FROM reports WHERE id IN ({placeholders})", stale_ids)
+        connection.commit()
+
+
 def save_scan(target_spec, device_rows, findings, summary):
     created_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with get_connection() as connection:
@@ -252,7 +278,9 @@ def save_scan(target_spec, device_rows, findings, summary):
             )
 
         connection.commit()
-        return report_id
+
+    prune_target_report_history(target_spec, keep_report_id=report_id)
+    return report_id
 
 
 def get_dashboard_stats():

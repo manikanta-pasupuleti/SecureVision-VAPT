@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +113,12 @@ def generate_recommendations(
     services: List[str],
     cve_matches: List[Dict],
     firmware_analysis: Dict,
+    findings: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     """
     Generate a prioritised list of actionable recommendations for a device.
-    Combines CVE-based, firmware-based, and service-based guidance.
-    Returns deduplicated list sorted by priority.
+    Combines CVE-based, firmware-based, service-based, and evidence-driven
+    credential guidance. Returns deduplicated list sorted by priority.
     """
     recommendations = []
     seen = set()
@@ -141,10 +142,50 @@ def generate_recommendations(
             seen.add(key)
             recommendations.append(_service_rec(s, vendor, device_type))
 
-    if "service:password" not in seen:
+    # Credential recommendations must be evidence-driven. The previous version
+    # always added a password recommendation, even when no credential weakness
+    # had been detected. That created unsupported findings in the dashboard.
+    if "service:password" not in seen and _has_credential_evidence(cve_matches, findings):
+        seen.add("service:password")
         recommendations.append(_service_rec("password", vendor, device_type))
 
     return sorted(recommendations, key=lambda r: r["priority_order"])
+
+
+def _has_credential_evidence(
+    cve_matches: List[Dict],
+    findings: Optional[List[Dict]],
+) -> bool:
+    """Return True only when the scan contains credential-related evidence."""
+    credential_terms = (
+        "default credential",
+        "default password",
+        "weak password",
+        "weak credential",
+        "weak authentication",
+        "credential exposure",
+    )
+
+    # Known CVEs may explicitly describe default/weak credentials.
+    for cve in cve_matches or []:
+        text = " ".join(
+            str(cve.get(key, ""))
+            for key in ("title", "description", "matched_by")
+        ).lower()
+        if any(term in text for term in credential_terms):
+            return True
+
+    # Scanner findings are stronger evidence because they represent an
+    # actual finding produced by the vulnerability checks.
+    for finding in findings or []:
+        text = " ".join(
+            str(finding.get(key, ""))
+            for key in ("title", "description", "evidence", "risk_justification")
+        ).lower()
+        if any(term in text for term in credential_terms):
+            return True
+
+    return False
 
 
 def get_top_recommendations(recommendations: List[Dict], limit: int = 3) -> List[Dict]:

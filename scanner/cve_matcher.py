@@ -235,6 +235,49 @@ _CVE_DATABASE: List[Dict] = [
     },
 
     # ------------------------------------------------------------------
+# MySQL CVEs
+# ------------------------------------------------------------------
+{
+    "cve_id": "CVE-2026-21968",
+    "title": "MySQL Server Optimizer Denial of Service",
+    "description": (
+        "A vulnerability in the MySQL Server Optimizer allows a low-privileged "
+        "attacker with network access to cause a hang or repeatable crash."
+    ),
+    "cvss_score": 6.5,
+    "severity": "medium",
+    "exploitability": "network",
+    "affected_vendors": ["mysql", "oracle"],
+    "affected_versions": [],
+        "affected_version_range": {"min": "8.0.0", "max": "8.0.44"},
+    "affected_services": ["mysql"],
+    "match_type": "firmware",
+    "references": [
+        "https://nvd.nist.gov/vuln/detail/CVE-2026-21968"
+    ],
+},
+{
+    "cve_id": "CVE-2026-21964",
+    "title": "MySQL Server Thread Pooling Denial of Service",
+    "description": (
+        "A vulnerability in MySQL Server Thread Pooling allows a highly "
+        "privileged attacker with network access to cause a hang or "
+        "repeatable crash."
+    ),
+    "cvss_score": 4.9,
+    "severity": "medium",
+    "exploitability": "network",
+    "affected_vendors": ["mysql", "oracle"],
+    "affected_versions": [],
+        "affected_version_range": {"min": "8.0.0", "max": "8.0.44"},
+    "affected_services": ["mysql"],
+    "match_type": "firmware",
+    "references": [
+        "https://nvd.nist.gov/vuln/detail/CVE-2026-21964"
+    ],
+},
+
+    # ------------------------------------------------------------------
     # Generic service-based CVEs (apply across vendors)
     # ------------------------------------------------------------------
     {
@@ -319,7 +362,7 @@ _CVSS_SEVERITY = [
 def match_cves(vendor: str, firmware_version: str, services: List[str]) -> List[Dict]:
     """
     Match CVEs against a device profile using three strategies:
-      1. Firmware version match  — CVE affects this exact version
+      1. Firmware version match  — CVE affects this exact version or version range
       2. Service match           — CVE triggered by a present service
       3. Vendor-wide match       — CVE affects all versions of this vendor
 
@@ -349,6 +392,7 @@ def match_cves(vendor: str, firmware_version: str, services: List[str]) -> List[
                 "severity": cve["severity"],
                 "exploitability": cve["exploitability"],
                 "affected_versions": cve["affected_versions"],
+                "affected_version_range": cve.get("affected_version_range"),
                 "affected_services": cve["affected_services"],
                 "matched_by": matched_by,
                 "references": cve["references"],
@@ -383,7 +427,25 @@ def get_cve_ids(cve_matches: List[Dict]) -> List[str]:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+def _version_in_range(version: str, minimum: str | None, maximum: str | None) -> bool:
+    """
+    Check whether a numeric dotted version falls within an inclusive range.
+    Example: 8.0.44 is between 8.0.0 and 8.0.44.
+    """
+    try:
+        current = tuple(int(x) for x in version.split("."))
+        min_v = tuple(int(x) for x in minimum.split(".")) if minimum else None
+        max_v = tuple(int(x) for x in maximum.split(".")) if maximum else None
 
+        if min_v and current < min_v:
+            return False
+
+        if max_v and current > max_v:
+            return False
+
+        return True
+    except (ValueError, AttributeError):
+        return False
 def _determine_match_reason(
     cve: Dict,
     vendor_lower: str,
@@ -401,6 +463,22 @@ def _determine_match_reason(
     # Firmware version match
     if affected_versions and firmware_version in affected_versions:
         return f"firmware version {firmware_version}"
+
+    # Inclusive firmware version range match.
+    version_range = cve.get("affected_version_range")
+    if version_range:
+        minimum = version_range.get("min")
+        maximum = version_range.get("max")
+
+        if _version_in_range(
+            firmware_version,
+            minimum,
+            maximum,
+        ):
+            return (
+                f"firmware version {firmware_version} "
+                f"(affected range {minimum or '*'}-{maximum or '*'})"
+            )
 
     # Service match (vendor-agnostic CVEs)
     if not cve_vendors:

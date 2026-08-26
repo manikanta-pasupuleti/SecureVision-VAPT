@@ -10,6 +10,23 @@ from typing import Dict, List, Optional
 # ---------------------------------------------------------------------------
 
 _SERVICE_PROFILES: Dict[str, Dict] = {
+    "mysql": {
+    "port": 3306,
+    "protocol": "TCP",
+    "encrypted": False,
+    "auth_required": True,
+    "exposure_risk": "medium",
+    "attack_vector": "network",
+    "description": (
+        "MySQL database service — remote database exposure "
+        "should be restricted and authenticated"
+    ),
+    "cve_tags": [
+        "database",
+        "remote-access",
+        "credential-exposure",
+    ],
+},
     "telnet": {
         "port": 23,
         "protocol": "TCP",
@@ -100,6 +117,96 @@ _SERVICE_PROFILES: Dict[str, Dict] = {
         "description": "Network management protocol — community strings often default",
         "cve_tags": ["network-management", "default-credentials", "information-disclosure"],
     },
+        "msrpc": {
+        "port": 135,
+        "protocol": "TCP",
+        "encrypted": None,
+        "auth_required": True,
+        "exposure_risk": "medium",
+        "attack_vector": "network",
+        "description": (
+            "Microsoft RPC service — remote procedure calls should be "
+            "restricted to trusted hosts and protected by host firewall rules"
+        ),
+        "cve_tags": [
+            "remote-access",
+            "rpc",
+            "network-exposure",
+        ],
+    },
+
+    "microsoft-ds": {
+        "port": 445,
+        "protocol": "TCP",
+        "encrypted": None,
+        "auth_required": True,
+        "exposure_risk": "high",
+        "attack_vector": "network",
+        "description": (
+            "Microsoft SMB service — network file and printer sharing "
+            "should be restricted and securely configured"
+        ),
+        "cve_tags": [
+            "smb",
+            "file-sharing",
+            "remote-access",
+            "network-exposure",
+        ],
+    },
+
+    "afrog": {
+        "port": 1042,
+        "protocol": "TCP",
+        "encrypted": None,
+        "auth_required": None,
+        "exposure_risk": "unknown",
+        "attack_vector": "network",
+        "description": (
+            "Nmap identified an AFROG service on TCP 1042. "
+            "Encryption and authentication could not be determined "
+            "from service identification alone."
+        ),
+        "cve_tags": [
+            "network-exposure",
+            "service-detection",
+        ],
+    },
+
+    "interwise": {
+        "port": 7778,
+        "protocol": "TCP",
+        "encrypted": None,
+        "auth_required": None,
+        "exposure_risk": "unknown",
+        "attack_vector": "network",
+        "description": (
+            "Interwise service detected on TCP 7778. "
+            "Encryption and authentication could not be determined "
+            "from service identification alone."
+        ),
+        "cve_tags": [
+            "network-exposure",
+            "service-detection",
+        ],
+    },
+
+    "tcpwrapped": {
+        "port": 8090,
+        "protocol": "TCP",
+        "encrypted": None,
+        "auth_required": None,
+        "exposure_risk": "unknown",
+        "attack_vector": "network",
+        "description": (
+            "TCP-wrapped service detected on TCP 8090. "
+            "The underlying application service could not be identified."
+        ),
+        "cve_tags": [
+            "tcpwrapped",
+            "service-detection",
+            "network-exposure",
+        ],
+    },
 }
 
 # Risk ordering for sorting and comparison
@@ -128,7 +235,10 @@ def get_high_risk_services(services: List[str]) -> List[Dict]:
 
 def get_unencrypted_services(services: List[str]) -> List[Dict]:
     """Return services that transmit data without encryption."""
-    return [s for s in enumerate_services(services) if not s["encrypted"]]
+    return [
+        s for s in enumerate_services(services)
+        if s.get("encrypted") is False
+    ]
 
 
 def get_service_port_map(services: List[str]) -> Dict[str, int]:
@@ -179,8 +289,8 @@ def _get_service_profile(service_name: str) -> Dict:
         "name": key,
         "port": 0,
         "protocol": "unknown",
-        "encrypted": False,
-        "auth_required": False,
+        "encrypted": None,
+        "auth_required": None,
         "exposure_risk": "unknown",
         "attack_vector": "network",
         "description": f"Unrecognised service: {service_name}",

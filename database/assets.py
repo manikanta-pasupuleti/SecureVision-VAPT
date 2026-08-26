@@ -21,9 +21,14 @@ def get_or_create_asset(ip_address: str, vendor: str, model: str, report_id: int
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with get_connection() as connection:
         existing = connection.execute(
-            "SELECT id FROM assets WHERE ip_address = ?", (ip_address,)
+            "SELECT * FROM assets WHERE ip_address = ?", (ip_address,)
         ).fetchone()
         if existing:
+            connection.execute(
+                "UPDATE assets SET vendor = ?, model = ?, last_seen = ?, current_firmware = ?, current_risk_score = ? WHERE id = ?",
+                (vendor, model, now, existing["current_firmware"], existing["current_risk_score"], existing["id"]),
+            )
+            connection.commit()
             return existing["id"]
         cursor = connection.execute(
             """
