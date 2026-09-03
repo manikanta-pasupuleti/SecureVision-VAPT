@@ -1,0 +1,25 @@
+SECUREVISION VAPT - PIPELINE VALIDATION
+
+STATIC CHECKS
+PASS  Python compileall
+PASS  Live discovery does not fall back to simulated profiles
+PASS  Down live targets are skipped instead of fingerprinting as simulated devices
+PASS  Live hosts with zero open ports remain live/unknown rather than becoming simulated
+PASS  Nmap product/version evidence is preserved
+PASS  Generic service presence does not create a CVE
+PASS  CVE findings retain their own CVE references and exploitability
+PASS  Recommendations are generated after findings exist
+
+CVE CORRELATION SMOKE TESTS
+PASS  Boa HTTPd 0.93.15 -> CVE-2007-4915
+PASS  dnsmasq 2.45 -> CVE-2017-14491
+PASS  GNU Inetutils FTPd 1.4.1 -> CVE-2023-40303
+PASS  MySQL Server 8.0.44 -> CVE-2026-21968, CVE-2026-21964
+PASS  Unknown + FTP/HTTP only -> no CVE
+PASS  Hikvision 5.4.5 without exact product/model evidence -> no automatic CVE
+
+LIMITATION
+The full Flask/Nmap integration test was not executable in this analysis container because
+its Python dependencies are not installed and package installation is unavailable here.
+The Dockerfile and requirements.txt were reviewed; the final live verification should be
+performed with the project's Docker build/run environment.

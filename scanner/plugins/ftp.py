@@ -17,8 +17,13 @@ class FTPPlugin(ServicePlugin):
             PluginResult(
                 severity="medium",
                 title="FTP service detected",
-                description="FTP was found in the simulated service profile and may expose insecure file transfer.",
-                remediation="Disable FTP unless it is strictly required and enforce secure alternatives.",
-                evidence="FTP service detected during fingerprinting.",
+                description=(
+                    "FTP was detected on the target and may expose insecure "
+                    "file transfer because credentials and data are sent without encryption."
+                ),
+                remediation=(
+                    "Disable FTP unless it is strictly required and enforce secure alternatives."
+                ),
+                evidence="FTP service detected during Nmap/service fingerprinting.",
             )
         ]

@@ -1,418 +1,193 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence
 
 
 # ---------------------------------------------------------------------------
-# CVE knowledge base
-# Each entry represents a known CVE relevant to surveillance infrastructure.
+# Conservative CVE knowledge base
+# ---------------------------------------------------------------------------
+# A CVE is returned only when the observed product/version is sufficient to
+# support the match.  Generic service presence (for example, "ftp exists") is
+# deliberately NOT treated as proof of a CVE.
 #
-# Fields:
-#   cve_id           - official CVE identifier
-#   title            - short human-readable title
-#   description      - technical description of the vulnerability
-#   cvss_score       - CVSS v3 base score (0.0 - 10.0)
-#   severity         - critical / high / medium / low
-#   exploitability   - network / adjacent / local / physical
-#   affected_vendors - list of affected vendor names (lowercase)
-#   affected_versions- specific firmware versions affected (empty = all versions)
-#   affected_services- services whose presence triggers this CVE match
-#   match_type       - firmware / service / vendor
-#   references       - public advisory URLs
+# This prevents a service finding from being mislabeled as a CVE and keeps the
+# distinction clear:
+#   service finding = observed exposure / configuration weakness
+#   CVE match      = observed software + affected version evidence
 # ---------------------------------------------------------------------------
 
 _CVE_DATABASE: List[Dict] = [
-
-    # ------------------------------------------------------------------
-    # Hikvision CVEs
-    # ------------------------------------------------------------------
     {
-        "cve_id": "CVE-2021-36260",
-        "title": "Hikvision Command Injection via Web Server",
+        "cve_id": "CVE-2007-4915",
+        "title": "Boa Webserver 0.93.15 stack-write vulnerability",
         "description": (
-            "A command injection vulnerability in the web server of Hikvision products "
-            "allows an unauthenticated attacker to gain full device control by sending "
-            "a specially crafted message to the vulnerable channel."
+            "The Intersil isl3893 extensions for Boa 0.93.15 are vulnerable "
+            "to a stack-write issue that can allow a remote attacker to change "
+            "the administrator password through a crafted HTTP Basic Authentication request."
         ),
-        "cvss_score": 9.8,
+        "cvss_score": 10.0,
         "severity": "critical",
         "exploitability": "network",
-        "affected_vendors": ["hikvision"],
-        "affected_versions": ["5.6.0", "5.5.0", "5.4.5", "5.4.0", "5.3.0"],
+        "product_aliases": ["boa", "boa httpd", "boa webserver"],
+        "affected_versions": ["0.93.15"],
+        "affected_version_ranges": [],
         "affected_services": ["http", "https"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-36260"],
+        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2007-4915"],
     },
     {
-        "cve_id": "CVE-2017-7921",
-        "title": "Hikvision Authentication Bypass",
+        "cve_id": "CVE-2017-14491",
+        "title": "dnsmasq heap buffer overflow",
         "description": (
-            "An improper authentication vulnerability allows an attacker to obtain "
-            "device configuration data and credentials by accessing a specific URL "
-            "without authentication."
+            "dnsmasq versions before 2.78 contain a heap-based buffer overflow "
+            "that can allow denial of service or arbitrary code execution through "
+            "a crafted DNS response."
         ),
         "cvss_score": 9.8,
         "severity": "critical",
         "exploitability": "network",
-        "affected_vendors": ["hikvision"],
-        "affected_versions": ["5.4.5", "5.4.0", "5.3.0", "4.1.0"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-7921"],
-    },
-    {
-        "cve_id": "CVE-2017-7923",
-        "title": "Hikvision Weak Password Policy",
-        "description": (
-            "A password in configuration file vulnerability allows an attacker with "
-            "network access to obtain the administrator password in plaintext."
-        ),
-        "cvss_score": 7.5,
-        "severity": "high",
-        "exploitability": "network",
-        "affected_vendors": ["hikvision"],
-        "affected_versions": ["5.4.5", "5.4.0", "5.3.0"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-7923"],
-    },
-    {
-        "cve_id": "CVE-2014-4878",
-        "title": "Hikvision RTSP Credential Exposure",
-        "description": (
-            "Hikvision devices expose credentials via RTSP stream requests, "
-            "allowing remote attackers to obtain sensitive information."
-        ),
-        "cvss_score": 5.0,
-        "severity": "medium",
-        "exploitability": "network",
-        "affected_vendors": ["hikvision"],
-        "affected_versions": ["4.1.0", "3.4.0"],
-        "affected_services": ["rtsp"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2014-4878"],
-    },
-
-    # ------------------------------------------------------------------
-    # Dahua CVEs
-    # ------------------------------------------------------------------
-    {
-        "cve_id": "CVE-2021-33044",
-        "title": "Dahua Authentication Bypass via Crafted Packet",
-        "description": (
-            "The identity authentication bypass vulnerability found in some Dahua products "
-            "allows attackers to bypass device identity authentication by constructing "
-            "malicious data packets."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["dahua"],
-        "affected_versions": ["3.210", "3.200", "3.100"],
-        "affected_services": ["http", "rtsp"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-33044"],
-    },
-    {
-        "cve_id": "CVE-2021-33045",
-        "title": "Dahua Authentication Bypass via Username Enumeration",
-        "description": (
-            "The identity authentication bypass vulnerability in Dahua products allows "
-            "attackers to bypass authentication through username enumeration."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["dahua"],
-        "affected_versions": ["3.210", "3.200", "3.100"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-33045"],
-    },
-    {
-        "cve_id": "CVE-2019-9082",
-        "title": "Dahua Remote Code Execution via Telnet",
-        "description": (
-            "ThinkPHP-based Dahua devices allow remote code execution via Telnet "
-            "due to improper input validation in the management interface."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["dahua"],
-        "affected_versions": ["3.200", "3.100"],
-        "affected_services": ["telnet"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-9082"],
-    },
-    {
-        "cve_id": "CVE-2017-6343",
-        "title": "Dahua Web Interface Remote Code Execution",
-        "description": (
-            "The web interface on Dahua devices allows remote attackers to execute "
-            "arbitrary OS commands via shell metacharacters in a login request."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["dahua"],
-        "affected_versions": ["3.100", "2.800"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-6343"],
-    },
-
-    # ------------------------------------------------------------------
-    # Axis CVEs
-    # ------------------------------------------------------------------
-    {
-        "cve_id": "CVE-2022-31199",
-        "title": "Axis Remote Code Execution via VAPIX API",
-        "description": (
-            "Remote code execution vulnerabilities in the VAPIX API of Axis devices "
-            "allow an attacker with network access to execute arbitrary code."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["axis"],
-        "affected_versions": ["10.9", "9.80"],
-        "affected_services": ["http", "https"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2022-31199"],
-    },
-    {
-        "cve_id": "CVE-2018-10660",
-        "title": "Axis Shell Command Injection",
-        "description": (
-            "A shell command injection vulnerability in Axis network cameras allows "
-            "remote attackers to execute arbitrary OS commands."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["axis"],
-        "affected_versions": ["9.80", "8.40", "7.20"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2018-10660"],
-    },
-
-    # ------------------------------------------------------------------
-    # Uniview CVEs
-    # ------------------------------------------------------------------
-    {
-        "cve_id": "CVE-2020-17473",
-        "title": "Uniview Authentication Bypass",
-        "description": (
-            "Uniview NVR devices contain an authentication bypass vulnerability "
-            "that allows unauthenticated remote attackers to access device functions."
-        ),
-        "cvss_score": 7.5,
-        "severity": "high",
-        "exploitability": "network",
-        "affected_vendors": ["uniview"],
-        "affected_versions": ["2.4.1", "2.2.0", "1.8.0"],
-        "affected_services": ["http", "onvif"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-17473"],
-    },
-    {
-        "cve_id": "CVE-2018-14933",
-        "title": "Uniview Remote Code Execution",
-        "description": (
-            "Uniview IP cameras allow remote code execution via crafted requests "
-            "to the upgrade interface without authentication."
-        ),
-        "cvss_score": 9.8,
-        "severity": "critical",
-        "exploitability": "network",
-        "affected_vendors": ["uniview"],
-        "affected_versions": ["2.2.0", "1.8.0"],
-        "affected_services": ["http"],
-        "match_type": "firmware",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2018-14933"],
-    },
-
-    # ------------------------------------------------------------------
-# MySQL CVEs
-# ------------------------------------------------------------------
-{
-    "cve_id": "CVE-2026-21968",
-    "title": "MySQL Server Optimizer Denial of Service",
-    "description": (
-        "A vulnerability in the MySQL Server Optimizer allows a low-privileged "
-        "attacker with network access to cause a hang or repeatable crash."
-    ),
-    "cvss_score": 6.5,
-    "severity": "medium",
-    "exploitability": "network",
-    "affected_vendors": ["mysql", "oracle"],
-    "affected_versions": [],
-        "affected_version_range": {"min": "8.0.0", "max": "8.0.44"},
-    "affected_services": ["mysql"],
-    "match_type": "firmware",
-    "references": [
-        "https://nvd.nist.gov/vuln/detail/CVE-2026-21968"
-    ],
-},
-{
-    "cve_id": "CVE-2026-21964",
-    "title": "MySQL Server Thread Pooling Denial of Service",
-    "description": (
-        "A vulnerability in MySQL Server Thread Pooling allows a highly "
-        "privileged attacker with network access to cause a hang or "
-        "repeatable crash."
-    ),
-    "cvss_score": 4.9,
-    "severity": "medium",
-    "exploitability": "network",
-    "affected_vendors": ["mysql", "oracle"],
-    "affected_versions": [],
-        "affected_version_range": {"min": "8.0.0", "max": "8.0.44"},
-    "affected_services": ["mysql"],
-    "match_type": "firmware",
-    "references": [
-        "https://nvd.nist.gov/vuln/detail/CVE-2026-21964"
-    ],
-},
-
-    # ------------------------------------------------------------------
-    # Generic service-based CVEs (apply across vendors)
-    # ------------------------------------------------------------------
-    {
-        "cve_id": "CVE-2023-28771",
-        "title": "Telnet Credential Interception on Embedded Devices",
-        "description": (
-            "Telnet services on embedded surveillance devices transmit credentials "
-            "in plaintext, allowing network-adjacent attackers to intercept "
-            "administrator credentials via passive sniffing."
-        ),
-        "cvss_score": 7.5,
-        "severity": "high",
-        "exploitability": "adjacent",
-        "affected_vendors": [],
+        "product_aliases": ["dnsmasq", "gnu dnsmasq"],
         "affected_versions": [],
-        "affected_services": ["telnet"],
-        "match_type": "service",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-28771"],
+        "affected_version_ranges": [{"min": None, "max": "2.77"}],
+        "affected_services": ["domain"],
+        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2017-14491"],
     },
     {
-        "cve_id": "CVE-2020-25078",
-        "title": "RTSP Stream Unauthenticated Access",
+        "cve_id": "CVE-2023-40303",
+        "title": "GNU inetutils privilege escalation",
         "description": (
-            "Multiple IP camera models expose RTSP streams without requiring "
-            "authentication, allowing any network-accessible attacker to view "
-            "live video feeds."
+            "GNU inetutils before 2.5 may allow privilege escalation because of "
+            "unchecked return values in set*id() calls used by ftpd and other "
+            "inetutils components."
         ),
-        "cvss_score": 7.5,
+        "cvss_score": 7.8,
         "severity": "high",
-        "exploitability": "network",
-        "affected_vendors": [],
+        "exploitability": "local",
+        "product_aliases": ["inetutils", "gnu inetutils", "gnu inetutils ftpd"],
         "affected_versions": [],
-        "affected_services": ["rtsp"],
-        "match_type": "service",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-25078"],
+        "affected_version_ranges": [{"min": None, "max": "2.4"}],
+        "affected_services": ["ftp"],
+        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-40303"],
     },
     {
-        "cve_id": "CVE-2019-11001",
-        "title": "FTP Credential Exposure on Surveillance Devices",
+        "cve_id": "CVE-2026-21968",
+        "title": "MySQL Server Optimizer denial of service",
         "description": (
-            "FTP services on surveillance devices transmit credentials in plaintext "
-            "and often use default or weak credentials, enabling unauthorized "
-            "access to stored recordings."
+            "A vulnerability in the MySQL Server Optimizer affects MySQL 8.0.0 "
+            "through 8.0.44, 8.4.0 through 8.4.7, and 9.0.0 through 9.5.0."
         ),
         "cvss_score": 6.5,
         "severity": "medium",
         "exploitability": "network",
-        "affected_vendors": [],
+        "product_aliases": ["mysql", "mysql server", "oracle mysql"],
         "affected_versions": [],
-        "affected_services": ["ftp"],
-        "match_type": "service",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2019-11001"],
+        "affected_version_ranges": [
+            {"min": "8.0.0", "max": "8.0.44"},
+            {"min": "8.4.0", "max": "8.4.7"},
+            {"min": "9.0.0", "max": "9.5.0"},
+        ],
+        "affected_services": ["mysql"],
+        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2026-21968"],
     },
     {
-        "cve_id": "CVE-2018-10088",
-        "title": "ONVIF Default Credential Exposure",
+        "cve_id": "CVE-2026-21964",
+        "title": "MySQL Server Thread Pooling denial of service",
         "description": (
-            "ONVIF-enabled devices frequently ship with default credentials that "
-            "are not enforced to change, allowing attackers to gain device control "
-            "via the ONVIF management interface."
+            "A vulnerability in MySQL Server Thread Pooling affects MySQL 8.0.0 "
+            "through 8.0.44, 8.4.0 through 8.4.7, and 9.0.0 through 9.5.0."
         ),
-        "cvss_score": 9.8,
-        "severity": "critical",
+        "cvss_score": 4.9,
+        "severity": "medium",
         "exploitability": "network",
-        "affected_vendors": [],
+        "product_aliases": ["mysql", "mysql server", "oracle mysql"],
         "affected_versions": [],
-        "affected_services": ["onvif"],
-        "match_type": "service",
-        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2018-10088"],
+        "affected_version_ranges": [
+            {"min": "8.0.0", "max": "8.0.44"},
+            {"min": "8.4.0", "max": "8.4.7"},
+            {"min": "9.0.0", "max": "9.5.0"},
+        ],
+        "affected_services": ["mysql"],
+        "references": ["https://nvd.nist.gov/vuln/detail/CVE-2026-21964"],
     },
 ]
 
-# CVSS score to severity label mapping
-_CVSS_SEVERITY = [
-    (9.0, "critical"),
-    (7.0, "high"),
-    (4.0, "medium"),
-    (0.1, "low"),
-]
 
+def match_cves(
+    vendor: str,
+    firmware_version: str,
+    services: List[str],
+    *,
+    product: str = "",
+    version: str = "",
+) -> List[Dict]:
+    """Return only CVEs supported by concrete product/version evidence.
 
-def match_cves(vendor: str, firmware_version: str, services: List[str]) -> List[Dict]:
+    The first three positional parameters are retained for compatibility with
+    the existing scanner.  Product-level matching should pass ``product`` and
+    ``version`` explicitly.  No CVE is produced from service presence alone.
     """
-    Match CVEs against a device profile using three strategies:
-      1. Firmware version match  — CVE affects this exact version or version range
-      2. Service match           — CVE triggered by a present service
-      3. Vendor-wide match       — CVE affects all versions of this vendor
+    observed_product = _normalize_product(product or vendor)
+    observed_version = str(version or firmware_version or "").strip()
+    services_lower = {str(s).strip().lower() for s in services or []}
 
-    Returns a deduplicated list of matched CVEs sorted by CVSS score descending.
-    """
-    vendor_lower = vendor.lower()
-    services_lower = [s.lower() for s in services]
-    matched = {}
+    if not observed_product or not _known_version(observed_version):
+        return []
+
+    matched: Dict[str, Dict] = {}
 
     for cve in _CVE_DATABASE:
-        cve_vendors = [v.lower() for v in cve["affected_vendors"]]
-        vendor_match = vendor_lower in cve_vendors or len(cve_vendors) == 0
-
-        if not vendor_match:
+        if not _product_matches(observed_product, cve.get("product_aliases", [])):
             continue
 
-        matched_by = _determine_match_reason(
-            cve, vendor_lower, firmware_version, services_lower
-        )
+        if not _version_matches(
+            observed_version,
+            cve.get("affected_versions", []),
+            cve.get("affected_version_ranges", []),
+        ):
+            continue
 
-        if matched_by and cve["cve_id"] not in matched:
-            matched[cve["cve_id"]] = {
-                "cve_id": cve["cve_id"],
-                "title": cve["title"],
-                "description": cve["description"],
-                "cvss_score": cve["cvss_score"],
-                "severity": cve["severity"],
-                "exploitability": cve["exploitability"],
-                "affected_versions": cve["affected_versions"],
-                "affected_version_range": cve.get("affected_version_range"),
-                "affected_services": cve["affected_services"],
-                "matched_by": matched_by,
-                "references": cve["references"],
-            }
+        affected_services = {
+            str(s).lower() for s in cve.get("affected_services", [])
+        }
+        if affected_services and not (affected_services & services_lower):
+            continue
 
-    return sorted(matched.values(), key=lambda c: c["cvss_score"], reverse=True)
+        matched[cve["cve_id"]] = {
+            "cve_id": cve["cve_id"],
+            "title": cve["title"],
+            "description": cve["description"],
+            "cvss_score": cve["cvss_score"],
+            "severity": cve["severity"],
+            "exploitability": cve["exploitability"],
+            "affected_versions": list(cve.get("affected_versions", [])),
+            "affected_version_range": (
+                cve.get("affected_version_ranges", [None])[0]
+                if cve.get("affected_version_ranges")
+                else None
+            ),
+            "affected_services": list(cve.get("affected_services", [])),
+            "matched_by": (
+                f"product {product or vendor} + version {observed_version}"
+            ),
+            "references": list(cve.get("references", [])),
+        }
+
+    return sorted(
+        matched.values(),
+        key=lambda c: c["cvss_score"],
+        reverse=True,
+    )
 
 
 def get_cve_summary(cve_matches: List[Dict]) -> Dict:
-    """
-    Summarise a list of CVE matches into counts by severity and top entries.
-    """
+    """Summarise CVE matches by severity."""
     breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for cve in cve_matches:
-        sev = cve["severity"].lower()
-        if sev in breakdown:
-            breakdown[sev] += 1
+    for cve in cve_matches or []:
+        severity = str(cve.get("severity", "")).lower()
+        if severity in breakdown:
+            breakdown[severity] += 1
 
     return {
-        "total": len(cve_matches),
+        "total": len(cve_matches or []),
         "breakdown": breakdown,
         "top_cvss": cve_matches[0]["cvss_score"] if cve_matches else 0.0,
         "top_cve": cve_matches[0]["cve_id"] if cve_matches else None,
@@ -420,76 +195,62 @@ def get_cve_summary(cve_matches: List[Dict]) -> Dict:
 
 
 def get_cve_ids(cve_matches: List[Dict]) -> List[str]:
-    """Return just the CVE ID strings from a match list."""
-    return [c["cve_id"] for c in cve_matches]
+    """Return only CVE identifiers."""
+    return [c["cve_id"] for c in cve_matches or []]
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-def _version_in_range(version: str, minimum: str | None, maximum: str | None) -> bool:
-    """
-    Check whether a numeric dotted version falls within an inclusive range.
-    Example: 8.0.44 is between 8.0.0 and 8.0.44.
-    """
-    try:
-        current = tuple(int(x) for x in version.split("."))
-        min_v = tuple(int(x) for x in minimum.split(".")) if minimum else None
-        max_v = tuple(int(x) for x in maximum.split(".")) if maximum else None
+def _normalize_product(product: str) -> str:
+    value = str(product or "").lower().strip()
+    value = value.replace("/", " ")
+    value = " ".join(value.split())
+    return value
 
-        if min_v and current < min_v:
-            return False
 
-        if max_v and current > max_v:
-            return False
+def _product_matches(observed: str, aliases: Sequence[str]) -> bool:
+    for alias in aliases:
+        candidate = _normalize_product(alias)
+        if observed == candidate:
+            return True
+        # Nmap often adds a suffix such as "Server" or "FTPd".
+        if observed.startswith(candidate + " "):
+            return True
+    return False
 
+
+def _known_version(version: str) -> bool:
+    return bool(version) and version.lower() not in {
+        "unknown", "none", "n/a", "na", "0", "-"
+    }
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    parts = []
+    for token in str(version).replace("-", ".").split("."):
+        digits = "".join(ch for ch in token if ch.isdigit())
+        if digits:
+            parts.append(int(digits))
+    return tuple(parts) if parts else (0,)
+
+
+def _version_matches(
+    version: str,
+    exact_versions: Sequence[str],
+    ranges: Sequence[Dict],
+) -> bool:
+    if version in exact_versions:
         return True
-    except (ValueError, AttributeError):
+
+    current = _version_tuple(version)
+    if current == (0,):
         return False
-def _determine_match_reason(
-    cve: Dict,
-    vendor_lower: str,
-    firmware_version: str,
-    services_lower: List[str],
-) -> str:
-    """
-    Determine why a CVE matches and return a human-readable reason string.
-    Returns empty string if no match.
-    """
-    affected_versions = cve.get("affected_versions", [])
-    affected_services = cve.get("affected_services", [])
-    cve_vendors = [v.lower() for v in cve.get("affected_vendors", [])]
 
-    # Firmware version match
-    if affected_versions and firmware_version in affected_versions:
-        return f"firmware version {firmware_version}"
+    for item in ranges:
+        minimum = item.get("min")
+        maximum = item.get("max")
+        if minimum and current < _version_tuple(minimum):
+            continue
+        if maximum and current > _version_tuple(maximum):
+            continue
+        return True
 
-    # Inclusive firmware version range match.
-    version_range = cve.get("affected_version_range")
-    if version_range:
-        minimum = version_range.get("min")
-        maximum = version_range.get("max")
-
-        if _version_in_range(
-            firmware_version,
-            minimum,
-            maximum,
-        ):
-            return (
-                f"firmware version {firmware_version} "
-                f"(affected range {minimum or '*'}-{maximum or '*'})"
-            )
-
-    # Service match (vendor-agnostic CVEs)
-    if not cve_vendors:
-        matching_services = [s for s in affected_services if s in services_lower]
-        if matching_services:
-            return f"service detected: {', '.join(matching_services)}"
-
-    # Vendor-wide match (no specific version listed)
-    if vendor_lower in cve_vendors and not affected_versions:
-        matching_services = [s for s in affected_services if s in services_lower]
-        if matching_services:
-            return f"vendor {vendor_lower} + service: {', '.join(matching_services)}"
-
-    return ""
+    return False

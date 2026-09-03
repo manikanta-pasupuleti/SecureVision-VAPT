@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import sqlite3
+from scanner.os_detection import get_attack_surface
 from datetime import datetime
 from pathlib import Path
 
@@ -186,32 +187,6 @@ def init_db():
             connection.commit()
 
 
-def prune_target_report_history(target_spec, keep_report_id=None):
-    """Keep only the newest report for a given target in the report history."""
-    if target_spec is None:
-        return
-
-    normalized = str(target_spec).strip()
-    if not normalized:
-        return
-
-    with get_connection() as connection:
-        rows = connection.execute(
-            "SELECT id FROM reports WHERE target_spec = ? AND (? IS NULL OR id != ?) ORDER BY id ASC",
-            (normalized, keep_report_id, keep_report_id),
-        ).fetchall()
-
-        stale_ids = [row["id"] for row in rows]
-        if not stale_ids:
-            return
-
-        placeholders = ", ".join("?" for _ in stale_ids)
-        connection.execute(f"DELETE FROM findings WHERE report_id IN ({placeholders})", stale_ids)
-        connection.execute(f"DELETE FROM devices WHERE report_id IN ({placeholders})", stale_ids)
-        connection.execute(f"DELETE FROM reports WHERE id IN ({placeholders})", stale_ids)
-        connection.commit()
-
-
 def save_scan(target_spec, device_rows, findings, summary):
     created_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with get_connection() as connection:
@@ -278,9 +253,7 @@ def save_scan(target_spec, device_rows, findings, summary):
             )
 
         connection.commit()
-
-    prune_target_report_history(target_spec, keep_report_id=report_id)
-    return report_id
+        return report_id
 
 
 def get_dashboard_stats():
@@ -343,9 +316,18 @@ def list_devices():
                 "vendor": row["vendor"],
                 "model": row["model"],
                 "firmware_version": row["firmware_version"],
-                "services": json.loads(row["services_json"]),
+                "services": _normalize_services(
+                    json.loads(row["services_json"] or "[]"),
+                    json.loads(row["intelligence_json"] or "{}"),
+                ),
                 "risk_score": row["risk_score"],
-                "intelligence": json.loads(row["intelligence_json"]) if row["intelligence_json"] else {},
+                "intelligence": _normalize_intelligence(
+                    json.loads(row["intelligence_json"] or "{}"),
+                    _normalize_services(
+                        json.loads(row["services_json"] or "[]"),
+                        json.loads(row["intelligence_json"] or "{}"),
+                    ),
+                ),
             }
         )
     return devices
@@ -386,9 +368,18 @@ def get_device_detail(report_id, ip_address):
         "vendor": device_row["vendor"],
         "model": device_row["model"],
         "firmware_version": device_row["firmware_version"],
-        "services": json.loads(device_row["services_json"]),
+        "services": _normalize_services(
+            json.loads(device_row["services_json"] or "[]"),
+            json.loads(device_row["intelligence_json"] or "{}"),
+        ),
         "risk_score": device_row["risk_score"],
-        "intelligence": json.loads(device_row["intelligence_json"]) if device_row["intelligence_json"] else {},
+        "intelligence": _normalize_intelligence(
+            json.loads(device_row["intelligence_json"] or "{}"),
+            _normalize_services(
+                json.loads(device_row["services_json"] or "[]"),
+                json.loads(device_row["intelligence_json"] or "{}"),
+            ),
+        ),
         "summary": json.loads(device_row["summary_json"]),
         "findings": [
             {
@@ -409,6 +400,91 @@ def get_device_detail(report_id, ip_address):
         ],
     }
 
+
+
+def _canonical_service_name(name, port=None):
+    service = str(name or "").strip().lower()
+    try:
+        port = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        port = None
+
+    if port == 443 and service in {"http", "ssl/http", "ssl", "https"}:
+        return "https"
+    if port == 80 and service in {"http", "www", "http-proxy"}:
+        return "http"
+
+    return {
+        "ssl/http": "https",
+        "https-alt": "https",
+        "www": "http",
+    }.get(service, service)
+
+
+def _normalize_services(stored_services, intelligence):
+    """Return one authoritative service list for every report view.
+
+    Older reports may have stored 443/tcp as generic ``http`` even though
+    the detailed Nmap evidence correctly identified HTTPS.  The persisted
+    enriched service records contain the port, so they are used to repair
+    that historical representation at read time.
+    """
+    candidates = []
+
+    for item in (intelligence or {}).get("enriched_services", []) or []:
+        if isinstance(item, dict):
+            name = _canonical_service_name(item.get("name"), item.get("port"))
+            port = item.get("port")
+        else:
+            name = _canonical_service_name(item)
+            port = None
+        if name:
+            candidates.append((port, name))
+
+    for item in stored_services or []:
+        name = _canonical_service_name(item)
+        if name:
+            candidates.append((None, name))
+
+    # Stable service order follows network port order where available.
+    candidates.sort(key=lambda x: (0 if x[0] is not None else 1, int(x[0]) if str(x[0]).isdigit() else 99999, x[1]))
+
+    result = []
+    seen = set()
+    for _, name in candidates:
+        if name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def _normalize_intelligence(intelligence, services):
+    """Make persisted intelligence agree with the canonical service list."""
+    intel = dict(intelligence or {})
+    enriched = []
+    seen = set()
+
+    for item in intel.get("enriched_services", []) or []:
+        if not isinstance(item, dict):
+            continue
+        copy = dict(item)
+        copy["name"] = _canonical_service_name(copy.get("name"), copy.get("port"))
+        if not copy["name"]:
+            continue
+        key = (copy["name"], copy.get("port"))
+        if key in seen:
+            continue
+        seen.add(key)
+        enriched.append(copy)
+
+    intel["enriched_services"] = enriched
+
+    os_info = dict(intel.get("os_info") or {})
+    intel["attack_surface"] = get_attack_surface(
+        os_info.get("device_type", "Unknown Device"),
+        services,
+    )
+    return intel
 
 def _build_report(row, include_details=True):
     if row is None:
@@ -435,18 +511,21 @@ def _build_report(row, include_details=True):
             "SELECT * FROM findings WHERE report_id = ? ORDER BY id ASC", (row["id"],)
         ).fetchall()
 
-    report["devices"] = [
-        {
+    report["devices"] = []
+    for device_row in device_rows:
+        stored_services = json.loads(device_row["services_json"] or "[]")
+        intelligence = json.loads(device_row["intelligence_json"] or "{}")
+        services = _normalize_services(stored_services, intelligence)
+        intelligence = _normalize_intelligence(intelligence, services)
+        report["devices"].append({
             "ip_address": device_row["ip_address"],
             "vendor": device_row["vendor"],
             "model": device_row["model"],
             "firmware_version": device_row["firmware_version"],
-            "services": json.loads(device_row["services_json"]),
+            "services": services,
             "risk_score": device_row["risk_score"],
-            "intelligence": json.loads(device_row["intelligence_json"]) if device_row["intelligence_json"] else {},
-        }
-        for device_row in device_rows
-    ]
+            "intelligence": intelligence,
+        })
     report["findings"] = [
         {
             "device_ip": finding_row["device_ip"],

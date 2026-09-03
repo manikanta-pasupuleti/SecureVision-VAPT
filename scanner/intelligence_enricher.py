@@ -29,7 +29,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 7.5 — Network-adjacent attacker can passively intercept credentials "
             "without authentication. Credentials provide full device access."
         ),
-        "cve_tags": ["CVE-2023-28771"],
     },
     "rtsp_unauthenticated": {
         "technical_explanation": (
@@ -49,7 +48,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 7.5 — Network attacker can access video streams without authentication. "
             "Exposes sensitive surveillance data."
         ),
-        "cve_tags": ["CVE-2020-25078"],
     },
     "onvif_exposed": {
         "technical_explanation": (
@@ -70,7 +68,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 9.8 — Network attacker can gain full device control via default credentials. "
             "ONVIF provides complete management access."
         ),
-        "cve_tags": ["CVE-2018-10088"],
     },
     "http_unencrypted": {
         "technical_explanation": (
@@ -90,7 +87,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 5.0 — Network attacker can intercept session tokens. Requires active "
             "interception but provides authenticated access."
         ),
-        "cve_tags": [],
     },
     "ftp_exposed": {
         "technical_explanation": (
@@ -110,7 +106,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 6.5 — Network attacker can intercept credentials and access file storage. "
             "Exposes recorded video and configuration data."
         ),
-        "cve_tags": ["CVE-2019-11001"],
     },
     "default_credentials": {
         "technical_explanation": (
@@ -130,7 +125,6 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS 9.8 — Network attacker gains full device control with zero effort. "
             "Default credentials are trivial to discover and use."
         ),
-        "cve_tags": [],
     },
     "outdated_firmware": {
         "technical_explanation": (
@@ -150,22 +144,42 @@ _FINDING_INTELLIGENCE: Dict[str, Dict] = {
             "CVSS varies by CVE — Outdated firmware is known to contain exploitable vulnerabilities. "
             "Upgrade path is available and should be prioritized."
         ),
-        "cve_tags": [],
     },
 }
 
 
 def enrich_finding(finding: Dict, device_context: Dict = None) -> Dict:
-    """
-    Enrich a finding with intelligence context.
-    
-    Adds technical explanation, business impact, exploitability, attack scenario,
-    risk justification, and CVE references.
-    """
+    """Add context without overwriting evidence-specific CVE data."""
+    enriched = {**finding}
+
+    # A verified CVE finding already contains authoritative vulnerability
+    # description, exploitability and CVSS context. Do not reinterpret it as
+    # a generic FTP/HTTP/Telnet finding merely because its description mentions
+    # one of those services.
+    if finding.get("cve_references"):
+        enriched.setdefault(
+            "technical_explanation",
+            finding.get("description", "See description for technical details."),
+        )
+        enriched.setdefault(
+            "business_impact",
+            "The affected software may expose the device to the impact described by the CVE.",
+        )
+        enriched.setdefault("exploitability", "unknown")
+        enriched.setdefault(
+            "attack_scenario",
+            "An attacker could attempt to exploit the affected product/version described by the CVE.",
+        )
+        enriched.setdefault(
+            "risk_justification",
+            f"Severity: {finding.get('severity', 'unknown')}",
+        )
+        enriched["references"] = finding.get("references", [])
+        return enriched
+
     finding_type = _infer_finding_type(finding)
     intelligence = _FINDING_INTELLIGENCE.get(finding_type, {})
 
-    enriched = {**finding}
     enriched.update({
         "technical_explanation": intelligence.get(
             "technical_explanation",
@@ -178,16 +192,17 @@ def enrich_finding(finding: Dict, device_context: Dict = None) -> Dict:
         "exploitability": intelligence.get("exploitability", "unknown"),
         "attack_scenario": intelligence.get(
             "attack_scenario",
-            "An attacker could exploit this vulnerability to gain unauthorized access.",
+            "An attacker could exploit this weakness to gain unauthorized access.",
         ),
         "risk_justification": intelligence.get(
             "risk_justification",
             f"Severity: {finding.get('severity', 'unknown')}",
         ),
-        "cve_references": intelligence.get("cve_tags", []),
-        "references": intelligence.get("references", []),
+        "cve_references": finding.get("cve_references", []),
+        "references": finding.get(
+            "references", intelligence.get("references", [])
+        ),
     })
-
     return enriched
 
 

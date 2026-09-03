@@ -117,9 +117,9 @@ def detect_os(vendor: str, services: List[str], firmware_version: str = "") -> D
 
     else:
         device_type, confidence = _fallback_device_type(services_lower)
-        platform = "Embedded Linux"
+        platform = "Unknown"
         architecture = "Unknown"
-        indicators.append("Vendor not in database — service-based detection used")
+        indicators.append("Vendor not identified — conservative service-based detection used")
         indicators.extend(_collect_service_indicators(services_lower))
 
     return {
@@ -147,10 +147,15 @@ def get_attack_surface(device_type: str, services: List[str]) -> List[str]:
         surface.append("Device management and discovery via ONVIF (port 80/8080)")
     if "ftp" in services_lower:
         surface.append("File transfer exposed via FTP (port 21)")
-    if "http" in services_lower and "https" not in services_lower:
-        surface.append("Web interface served over unencrypted HTTP")
-    if "https" in services_lower:
-        surface.append("Web interface served over HTTPS")
+    has_http = "http" in services_lower
+    has_https = "https" in services_lower
+
+    if has_http and has_https:
+        surface.append("Web management interface exposed over HTTP (port 80) and HTTPS (port 443)")
+    elif has_http:
+        surface.append("Web management interface exposed over unencrypted HTTP (port 80)")
+    elif has_https:
+        surface.append("HTTPS web management interface exposed (port 443)")
 
     if device_type in ("DVR", "DVR/NVR", "NVR"):
         surface.append("Multi-channel recording device — compromise affects all connected cameras")
@@ -201,17 +206,32 @@ def _infer_device_type(profile: Dict, services: List[str]) -> str:
 
 
 def _fallback_device_type(services: List[str]) -> tuple:
-    """Vendor-agnostic device type detection based on service patterns."""
-    best_match = ("Unknown Device", "low")
-    best_score = 0
+    """Conservative vendor-agnostic device type detection.
 
-    for hint in _SERVICE_DEVICE_HINTS:
-        score = sum(1 for s in hint["services"] if s in services)
-        if score > best_score:
-            best_score = score
-            best_match = (hint["device_type"], hint["confidence"])
+    Generic services such as FTP/HTTP/HTTPS/DNS are not enough evidence to
+    call a host a DVR/NVR. Strong surveillance indicators are RTSP and ONVIF.
+    """
+    services_set = set(services)
 
-    return best_match
+    # Strongest generic surveillance signal: both streaming and management.
+    if "rtsp" in services_set and "onvif" in services_set:
+        return "DVR/NVR", "medium"
+
+    # RTSP alone is enough to suggest a camera/streaming endpoint, but not
+    # enough to claim a recorder.
+    if "rtsp" in services_set:
+        return "IP Camera", "low"
+
+    # ONVIF alone indicates surveillance management/discovery, but the exact
+    # device class cannot be established safely.
+    if "onvif" in services_set:
+        return "IP Camera", "low"
+
+    # HTTP/HTTPS/FTP/DNS/Telnet alone identify a generic network service host.
+    if services_set & {"http", "https", "ftp", "domain", "dns", "telnet"}:
+        return "Network Device", "low"
+
+    return "Unknown Device", "low"
 
 
 def _collect_service_indicators(services: List[str]) -> List[str]:

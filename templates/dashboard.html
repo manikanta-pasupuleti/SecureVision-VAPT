@@ -31,7 +31,7 @@
 
   <section class="grid-2">
     <div class="panel">
-      <p class="section-title">Risk Distribution</p>
+      <p class="section-title">Finding Severity Distribution</p>
       <canvas id="riskChart" style="max-height: 300px;"></canvas>
     </div>
     <div class="panel">
@@ -171,7 +171,7 @@
             </div>
             <div class="mini-card">
               <span class="muted">Open Services</span>
-              <strong>{{ device.services|length }}</strong>
+              <strong>{{ (services|length) if services else (device.services|length) }}</strong>
             </div>
             <div class="mini-card">
               <span class="muted">Unencrypted</span>
@@ -387,71 +387,81 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const chartColors = {
-      critical: '#ff9ab3',
+      critical: '#ff6f91',
       high: '#ff9ab3',
       medium: '#ffe2a0',
       low: '#b1f1b7',
-      info: '#b1f1b7'
+      info: '#7bb7ff'
     };
 
     fetch('/api/analytics')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Analytics request failed: ${r.status}`);
+        return r.json();
+      })
       .then(data => {
-        // Risk Distribution
+        // Risk Distribution: plot only severities that actually exist.
+        // Example for the current live report: Medium=1, Low=1.
+        const riskEntries = Object.entries(data.risk_distribution || {})
+          .filter(([, count]) => Number(count) > 0);
+
         const riskCtx = document.getElementById('riskChart').getContext('2d');
         new Chart(riskCtx, {
           type: 'doughnut',
           data: {
-            labels: Object.keys(data.risk_distribution),
+            labels: riskEntries.map(([severity]) => severity),
             datasets: [{
-              data: Object.values(data.risk_distribution),
-              backgroundColor: [
-                chartColors.critical,
-                chartColors.high,
-                chartColors.medium,
-                chartColors.low,
-                chartColors.info
-              ]
+              data: riskEntries.map(([, count]) => count),
+              backgroundColor: riskEntries.map(([severity]) => chartColors[severity] || '#7bb7ff'),
+              borderWidth: 1
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { legend: { position: 'bottom' } }
+            plugins: {
+              legend: { position: 'bottom' }
+            }
           }
         });
 
-        // Device Risk Timeline
+        // Device Risk Timeline: analytics returns only real scan/report dates.
+        const timeline = data.device_risk_timeline || [];
         const timelineCtx = document.getElementById('timelineChart').getContext('2d');
         new Chart(timelineCtx, {
           type: 'line',
           data: {
-            labels: data.device_risk_timeline.map(d => d.date),
+            labels: timeline.map(d => d.date),
             datasets: [{
               label: 'Avg Risk Score',
-              data: data.device_risk_timeline.map(d => d.avg_risk),
+              data: timeline.map(d => d.avg_risk),
               borderColor: '#4dd6c0',
               backgroundColor: 'rgba(77, 214, 192, 0.1)',
-              tension: 0.4
+              tension: 0.25,
+              pointRadius: 4,
+              spanGaps: false
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: true,
             plugins: { legend: { display: true } },
-            scales: { y: { beginAtZero: true, max: 100 } }
+            scales: {
+              y: { beginAtZero: true, max: 100 }
+            }
           }
         });
 
-        // CVE Trends
+        // CVE Trends remain a 30-day activity view. Zero days are valid here
+        // because this chart intentionally represents the selected time window.
         const cveCtx = document.getElementById('cveChart').getContext('2d');
         new Chart(cveCtx, {
           type: 'bar',
           data: {
-            labels: data.cve_trends.map(d => d.date),
+            labels: (data.cve_trends || []).map(d => d.date),
             datasets: [{
               label: 'CVEs Discovered',
-              data: data.cve_trends.map(d => d.count),
+              data: (data.cve_trends || []).map(d => d.count),
               backgroundColor: '#7bb7ff'
             }]
           },
@@ -462,46 +472,44 @@
           }
         });
 
-        // Top CVEs
-        const topCvesHtml = data.top_cves.map(cve => `
+        const topCvesHtml = (data.top_cves || []).map(cve => `
           <div class="mini-card">
             <strong>${cve.cve_id}</strong>
             <span class="muted">${cve.count} findings</span>
           </div>
         `).join('');
-        document.getElementById('topCvesContainer').innerHTML = topCvesHtml;
+        document.getElementById('topCvesContainer').innerHTML =
+          topCvesHtml || '<p class="muted">No confirmed CVE matches.</p>';
 
-        // Asset Health
-        const health = data.asset_health;
-        const assetHealthHtml = `
+        const health = data.asset_health || {};
+        document.getElementById('assetHealthContainer').innerHTML = `
           <div class="mini-card">
             <span class="muted">Total Assets</span>
-            <strong>${health.total}</strong>
+            <strong>${health.total ?? 0}</strong>
           </div>
           <div class="mini-card">
             <span class="muted">Active</span>
-            <strong>${health.active}</strong>
+            <strong>${health.active ?? 0}</strong>
           </div>
           <div class="mini-card">
             <span class="muted">High Risk</span>
-            <strong style="color: #ff9ab3;">${health.high_risk}</strong>
+            <strong style="color: #ff9ab3;">${health.high_risk ?? 0}</strong>
           </div>
           <div class="mini-card">
             <span class="muted">Critical</span>
-            <strong style="color: #ff6f91;">${health.critical}</strong>
+            <strong style="color: #ff6f91;">${health.critical ?? 0}</strong>
           </div>
         `;
-        document.getElementById('assetHealthContainer').innerHTML = assetHealthHtml;
 
-        // Services Exposure
+        const services = data.service_exposure || [];
         const servicesCtx = document.getElementById('servicesChart').getContext('2d');
         new Chart(servicesCtx, {
           type: 'bar',
           data: {
-            labels: data.service_exposure.map(s => s.service),
+            labels: services.map(s => s.service),
             datasets: [{
               label: 'Devices',
-              data: data.service_exposure.map(s => s.count),
+              data: services.map(s => s.count),
               backgroundColor: '#4dd6c0'
             }]
           },
@@ -509,10 +517,15 @@
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: true,
-            plugins: { legend: { display: false } }
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { beginAtZero: true, ticks: { precision: 0 } }
+            }
           }
         });
       })
-      .catch(err => console.error('Analytics error:', err));
+      .catch(err => {
+        console.error('Analytics error:', err);
+      });
   </script>
 {% endblock %}

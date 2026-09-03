@@ -48,20 +48,27 @@ def _create_report(target_spec, *, vendor="Dahua", model="IPC-HFW-2", firmware="
     )
 
 
-def test_dashboard_uses_latest_live_report_for_same_target(monkeypatch, tmp_path):
+def test_dashboard_uses_latest_report(monkeypatch, tmp_path):
     db_path = tmp_path / "dashboard-test.db"
     monkeypatch.setenv("SECUREVISION_DB_PATH", str(db_path))
     db_module.DB_PATH = db_path
     db_module.init_db()
 
-    stale_id = _create_report("127.0.0.1", vendor="Dahua", model="IPC-HFW-2", firmware="3.210")
-    latest_id = _create_report("127.0.0.1", vendor="Unknown", model="Unknown", firmware="Unknown")
+    stale_id = _create_report(
+        "127.0.0.1", vendor="Dahua", model="IPC-HFW-2", firmware="3.210"
+    )
+    latest_id = _create_report(
+        "127.0.0.1", vendor="Unknown", model="Unknown", firmware="Unknown"
+    )
 
     latest_report = db_module.get_latest_report()
     assert latest_report is not None
     assert latest_report["id"] == latest_id
     assert latest_report["devices"][0]["vendor"] == "Unknown"
-    assert db_module.get_report(stale_id) is None
+
+    # Report history is intentionally retained; the dashboard selects the newest
+    # report rather than deleting earlier scan evidence.
+    assert db_module.get_report(stale_id) is not None
 
     app = create_app()
     with app.test_client() as client:
@@ -69,25 +76,3 @@ def test_dashboard_uses_latest_live_report_for_same_target(monkeypatch, tmp_path
 
     assert response.status_code == 200
     assert b"Unknown" in response.data
-
-
-def test_live_scan_prunes_old_reports_for_same_target(monkeypatch, tmp_path):
-    db_path = tmp_path / "live-scan-test.db"
-    monkeypatch.setenv("SECUREVISION_DB_PATH", str(db_path))
-    db_module.DB_PATH = db_path
-    db_module.init_db()
-
-    _create_report("127.0.0.1", vendor="Dahua", model="IPC-HFW-2", firmware="3.210")
-
-    from api.scan import run_scan
-
-    newest_id = run_scan("127.0.0.1", mode="live")
-
-    rows = db_module.get_connection().execute(
-        "SELECT id FROM reports WHERE target_spec = ? ORDER BY id ASC",
-        ("127.0.0.1",),
-    ).fetchall()
-    report_ids = [row[0] for row in rows]
-
-    assert newest_id in report_ids
-    assert report_ids == [newest_id]

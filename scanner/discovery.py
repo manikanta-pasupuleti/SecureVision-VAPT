@@ -185,25 +185,28 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 )
 
             ports = nmap_result.get("ports") or []
+            host_status = str(nmap_result.get("host_status", "unknown")).lower()
 
             print(
-                f"[DISCOVERY] {target}: "
+                f"[DISCOVERY] {target}: status={host_status}, "
                 f"{len(ports)} ports detected"
             )
+            print(f"[DISCOVERY] Ports: {ports}")
 
-            print(
-                f"[DISCOVERY] Ports: {ports}"
-            )
+            if host_status not in {"up", "unknown"} and not ports:
+                print(
+                    f"[DISCOVERY] {target}: host is not live; "
+                    "skipping it instead of creating a simulated device."
+                )
+                continue
 
             devices.append(
                 {
                     "ip_address": target,
                     "source": target,
+                    "scan_mode": "live",
                     "discovered": True,
-                    "host_status": nmap_result.get(
-                        "host_status",
-                        "unknown",
-                    ),
+                    "host_status": host_status,
                     "ports": ports,
                 }
             )
@@ -310,16 +313,21 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 )
 
             ports = nmap_result.get("ports") or []
+            host_status = str(nmap_result.get("host_status", "unknown")).lower()
+
+            if host_status not in {"up", "unknown"} and not ports:
+                print(
+                    f"[DISCOVERY] {host}: no live host after service scan; skipping."
+                )
+                continue
 
             devices.append(
                 {
                     "ip_address": host,
                     "source": target,
+                    "scan_mode": "live",
                     "discovered": True,
-                    "host_status": nmap_result.get(
-                        "host_status",
-                        "unknown",
-                    ),
+                    "host_status": host_status,
                     "ports": ports,
                 }
             )
@@ -430,6 +438,7 @@ def _build_device(
     return {
         "ip_address": ip_text,
         "source": source,
+        "scan_mode": "simulated",
         "discovered": True,
     }
 

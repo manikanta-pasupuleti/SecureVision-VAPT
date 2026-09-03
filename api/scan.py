@@ -20,89 +20,79 @@ logger = get_logger(__name__)
 
 def run_scan(target_spec: str, mode: str = "live"):
     """
-    Run a SecureVision scan.
+    Run a SecureVision VAPT scan.
 
-    LIVE mode:
-        Uses real device discovery / Nmap data.
+    live:
+        Uses the real Nmap discovery pipeline.
 
-    SIMULATED mode:
-        Uses the existing deterministic simulated device profiles.
+    simulated:
+        Uses the project's deterministic simulated profiles.
 
-    Live is the default because the web scanner should use real
-    Nmap observations unless simulation is explicitly requested.
+    Live is the default so a normal dashboard scan cannot silently
+    fall back to simulated surveillance data.
     """
-
     targets = parse_target_input(target_spec)
 
-    print("\n========== RUN SCAN ==========")
+    if not targets:
+        raise ValueError("No valid scan targets were supplied.")
+
+    print("\n" + "=" * 70)
+    print("SECUREVISION VAPT SCAN")
+    print("=" * 70)
     print("Target specification:", target_spec)
     print("Parsed targets:", targets)
     print("Scan mode:", mode)
-    print("==============================\n")
+    print("=" * 70 + "\n")
 
     discovered = discover_devices(targets, mode=mode)
 
     print("\n========== DISCOVERY RESULT ==========")
-    print(discovered)
+    print("Devices discovered:", len(discovered))
+    for item in discovered:
+        print(item)
     print("======================================\n")
+
+    if mode == "live" and not discovered:
+        raise ValueError(
+            "Live Nmap scan completed but no live hosts were discovered."
+        )
 
     device_rows = []
     findings = []
 
     for device in discovered:
+        print("\n========== DEVICE ==========")
+        print(device.get("ip_address"))
+        print("Ports:", device.get("ports", []))
+        print("============================\n")
 
-        print("\n========== DEVICE DISCOVERED ==========")
-        print(device)
-        print("=======================================\n")
-
-        # ---------------------------------------------------------
-        # Fingerprinting
-        # ---------------------------------------------------------
         fingerprinted = fingerprint_device(device)
 
-        print("\n========== FINGERPRINT RESULT ==========")
+        print("\n========== FINGERPRINT ==========")
         print(fingerprinted)
-        print("========================================\n")
+        print("=================================\n")
 
-        # ---------------------------------------------------------
-        # Vulnerability / intelligence analysis
-        # ---------------------------------------------------------
         device_findings = scan_vulnerabilities(fingerprinted)
 
-        print("\n========== VULNERABILITY FINDINGS ==========")
+        print("\n========== FINDINGS ==========")
         for finding in device_findings:
             print(finding)
-        print("============================================\n")
+        print("==============================\n")
 
-        # ---------------------------------------------------------
-        # Risk calculation
-        # ---------------------------------------------------------
         risk_score = calculate_risk_score(device_findings)
 
-        print("Risk score:", risk_score)
-
-        # Keep all fingerprint/intelligence information.
-        device_rows.append(
-            {
-                **fingerprinted,
-                "risk_score": risk_score,
-            }
-        )
-
+        device_rows.append({
+            **fingerprinted,
+            "risk_score": risk_score,
+        })
         findings.extend(device_findings)
 
-    # -------------------------------------------------------------
-    # Generate report
-    # -------------------------------------------------------------
     summary = generate_report(device_rows, findings)
 
     print("\n========== REPORT SUMMARY ==========")
     print(summary)
     print("====================================\n")
 
-    # -------------------------------------------------------------
-    # Save scan
-    # -------------------------------------------------------------
     report_id = save_scan(
         target_spec,
         device_rows,
@@ -112,22 +102,18 @@ def run_scan(target_spec: str, mode: str = "live"):
 
     print("Saved report ID:", report_id)
 
-    # -------------------------------------------------------------
-    # Update assets
-    # -------------------------------------------------------------
     for device in device_rows:
-
         asset_id = get_or_create_asset(
             device["ip_address"],
-            device["vendor"],
-            device["model"],
+            device.get("vendor", "Unknown"),
+            device.get("model", "Unknown"),
             report_id,
         )
 
         update_asset_from_scan(
             asset_id,
-            device["firmware_version"],
-            device["risk_score"],
+            device.get("firmware_version", "Unknown"),
+            device.get("risk_score", 0),
             report_id,
         )
 
@@ -136,41 +122,26 @@ def run_scan(target_spec: str, mode: str = "live"):
 
 @scan_bp.route("/scan", methods=["POST"])
 def scan():
-
     target_spec = request.form.get("targets", "").strip()
 
-    # -------------------------------------------------------------
-    # Determine scan mode
-    #
-    # IMPORTANT:
-    # Live/Nmap is now the default.
-    #
-    # Existing forms using:
-    #     <input name="live" ...>
-    # will still work.
-    #
-    # You can explicitly request simulation with:
-    #     mode=simulated
-    # -------------------------------------------------------------
-
-    requested_mode = (
-        request.form.get("mode", "")
-        .strip()
-        .lower()
-    )
-
+    requested_mode = request.form.get("mode", "").strip().lower()
     live_flag = request.form.get("live")
 
-    mode = "live"
+    # Live is the safe/default web-scanner behaviour.
+    # Simulation must be explicitly requested.
+    if requested_mode == "simulated":
+        mode = "simulated"
+    else:
+        mode = "live"
 
-    print("\n========================================")
-    print("     SECUREVISION VAPT SCAN")
-    print("========================================")
+    print("\n" + "=" * 70)
+    print("SECUREVISION VAPT")
+    print("=" * 70)
     print("Target:", target_spec)
     print("Live flag:", live_flag)
-    print("Requested mode:", requested_mode)
+    print("Requested mode:", requested_mode or "(not specified)")
     print("FINAL MODE:", mode)
-    print("========================================\n")
+    print("=" * 70 + "\n")
 
     if not target_spec:
         flash(
@@ -178,22 +149,18 @@ def scan():
             "or comma-separated device list.",
             "error",
         )
-
-        return redirect(
-            url_for("dashboard.dashboard")
-        )
+        return redirect(url_for("dashboard.dashboard"))
 
     try:
+        report_id = run_scan(target_spec, mode=mode)
 
-        report_id = run_scan(
-            target_spec,
-            mode=mode,
+        message = (
+            "Live Nmap scan completed and stored in the report history."
+            if mode == "live"
+            else "Simulated scan completed and stored in the report history."
         )
 
-        flash(
-            "Live Nmap scan completed and stored in the report history.",
-            "success",
-        )
+        flash(message, "success")
 
         return redirect(
             url_for(
@@ -203,37 +170,18 @@ def scan():
         )
 
     except ValueError as exc:
-
         logger.exception("Scan failed")
-
-        flash(
-            str(exc),
-            "error",
-        )
-
-        return redirect(
-            url_for("dashboard.dashboard")
-        )
+        flash(str(exc), "error")
+        return redirect(url_for("dashboard.dashboard"))
 
     except Exception as exc:
-
-        logger.exception(
-            "Unexpected SecureVision scan failure"
-        )
-
-        flash(
-            f"Scan failed: {exc}",
-            "error",
-        )
-
-        return redirect(
-            url_for("dashboard.dashboard")
-        )
+        logger.exception("Unexpected SecureVision scan failure")
+        flash(f"Scan failed: {exc}", "error")
+        return redirect(url_for("dashboard.dashboard"))
 
 
 @scan_bp.route("/")
 def index():
-
     stats = get_dashboard_stats()
     latest_report = get_latest_report()
     pipeline = get_assessment_pipeline()
