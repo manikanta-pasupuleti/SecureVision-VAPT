@@ -5,6 +5,7 @@ from typing import List, Dict
 
 import shutil
 import subprocess
+import socket
 
 from scanner.nmap_scanner import scan_host
 
@@ -14,7 +15,7 @@ def discover_devices(
     mode: str = "live",
 ) -> List[Dict]:
     """
-    Discover devices from target IP addresses or CIDR networks.
+    Discover devices from target IP addresses, hostnames, or CIDR networks.
 
     Modes:
         live       -> Real Nmap discovery and service scanning.
@@ -109,6 +110,9 @@ def _discover_live(targets: List[str]) -> List[Dict]:
     For explicit IP addresses:
         Directly call scan_host().
 
+    For hostnames:
+        Resolve the hostname to an IPv4 address, then call scan_host().
+
     For CIDR ranges:
         First perform host discovery with Nmap -sn,
         then run service/version detection using scan_host().
@@ -143,11 +147,13 @@ def _discover_live(targets: List[str]) -> List[Dict]:
         )
 
         # ---------------------------------------------------------
-        # DIRECT IP / HOST TARGET
+        # DIRECT IP / HOSTNAME TARGET
         # ---------------------------------------------------------
         #
-        # Example:
+        # Examples:
         #     192.168.1.10
+        #     8.8.8.8
+        #     scanme.nmap.org
         #
         # Do NOT run -sn first.
         #
@@ -158,22 +164,55 @@ def _discover_live(targets: List[str]) -> List[Dict]:
 
         if "/" not in target:
 
+            # -----------------------------------------------------
+            # First determine whether the target is an IP address.
+            # If not, resolve it as a hostname.
+            # -----------------------------------------------------
+
             try:
                 ip_address(target)
 
-            except ValueError as exc:
+                # Target is already an IPv4/IPv6 address.
+                resolved_ip = target
 
-                raise ValueError(
-                    f"Invalid IP address: {target}"
-                ) from exc
+                print(
+                    f"[DISCOVERY] Target is an IP address: "
+                    f"{resolved_ip}"
+                )
+
+            except ValueError:
+
+                # -------------------------------------------------
+                # Target is not an IP address.
+                # Try DNS hostname resolution.
+                # -------------------------------------------------
+
+                try:
+                    resolved_ip = socket.gethostbyname(target)
+
+                except socket.gaierror as exc:
+
+                    raise ValueError(
+                        f"Invalid IP address or hostname: {target}"
+                    ) from exc
+
+                print(
+                    f"[DISCOVERY] Resolved hostname: "
+                    f"{target} -> {resolved_ip}"
+                )
+
+            # -----------------------------------------------------
+            # Run actual Nmap service/version detection.
+            # -----------------------------------------------------
 
             print(
-                f"[DISCOVERY] Direct live scan: {target}"
+                f"[DISCOVERY] Direct live scan: "
+                f"{target} -> {resolved_ip}"
             )
 
             try:
 
-                nmap_result = scan_host(target)
+                nmap_result = scan_host(resolved_ip)
 
             except Exception as exc:
 
@@ -181,6 +220,10 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                     f"Nmap service scan failed for "
                     f"{target}: {exc}"
                 ) from exc
+
+            # -----------------------------------------------------
+            # Validate scanner result.
+            # -----------------------------------------------------
 
             if not isinstance(nmap_result, dict):
 
@@ -209,9 +252,14 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 f"[DISCOVERY] Ports: {ports}"
             )
 
+            # -----------------------------------------------------
             # With -Pn, Nmap may report a host as up even when
-            # no ports are open. Only skip an explicitly down
-            # host when there is no port evidence.
+            # no ports are open.
+            #
+            # Only skip an explicitly down host when there is
+            # no port evidence.
+            # -----------------------------------------------------
+
             if host_status not in {"up", "unknown"} and not ports:
 
                 print(
@@ -221,9 +269,16 @@ def _discover_live(targets: List[str]) -> List[Dict]:
 
                 continue
 
+            # -----------------------------------------------------
+            # Store the resolved IP as ip_address.
+            #
+            # Keep the original target in "source" so the report
+            # can still show the hostname that the user entered.
+            # -----------------------------------------------------
+
             devices.append(
                 {
-                    "ip_address": target,
+                    "ip_address": resolved_ip,
                     "source": target,
                     "scan_mode": "live",
                     "discovered": True,
@@ -312,6 +367,11 @@ def _discover_live(targets: List[str]) -> List[Dict]:
             f"{hosts_found}"
         )
 
+        # ---------------------------------------------------------
+        # Run service/version detection against every discovered
+        # host.
+        # ---------------------------------------------------------
+
         for host in hosts_found:
 
             print(
@@ -367,11 +427,17 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 }
             )
 
-    print("\n========================================")
+    print(
+        "\n========================================"
+    )
+
     print(
         f"[DISCOVERY] LIVE DEVICES: {len(devices)}"
     )
-    print("========================================")
+
+    print(
+        "========================================"
+    )
 
     for device in devices:
 
