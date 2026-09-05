@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from ipaddress import ip_address, ip_network
-from typing import List, Dict, Optional
+from typing import List, Dict
+
 import shutil
 import subprocess
 
@@ -142,21 +143,26 @@ def _discover_live(targets: List[str]) -> List[Dict]:
         )
 
         # ---------------------------------------------------------
-        # DIRECT IP TARGET
+        # DIRECT IP / HOST TARGET
         # ---------------------------------------------------------
         #
         # Example:
-        #     127.0.0.1
+        #     192.168.1.10
         #
         # Do NOT run -sn first.
-        # scan_host() already performs the actual Nmap service
-        # detection that we need.
         #
+        # scan_host() performs the actual service/version scan.
+        # It uses -Pn so cloud environments such as Render do not
+        # depend on ICMP host discovery.
+        # ---------------------------------------------------------
+
         if "/" not in target:
 
             try:
                 ip_address(target)
+
             except ValueError as exc:
+
                 raise ValueError(
                     f"Invalid IP address: {target}"
                 ) from exc
@@ -185,19 +191,34 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 )
 
             ports = nmap_result.get("ports") or []
-            host_status = str(nmap_result.get("host_status", "unknown")).lower()
+
+            host_status = str(
+                nmap_result.get(
+                    "host_status",
+                    "unknown",
+                )
+            ).lower()
 
             print(
-                f"[DISCOVERY] {target}: status={host_status}, "
+                f"[DISCOVERY] {target}: "
+                f"status={host_status}, "
                 f"{len(ports)} ports detected"
             )
-            print(f"[DISCOVERY] Ports: {ports}")
 
+            print(
+                f"[DISCOVERY] Ports: {ports}"
+            )
+
+            # With -Pn, Nmap may report a host as up even when
+            # no ports are open. Only skip an explicitly down
+            # host when there is no port evidence.
             if host_status not in {"up", "unknown"} and not ports:
+
                 print(
-                    f"[DISCOVERY] {target}: host is not live; "
-                    "skipping it instead of creating a simulated device."
+                    f"[DISCOVERY] {target}: "
+                    f"host is not live; skipping it."
                 )
+
                 continue
 
             devices.append(
@@ -214,15 +235,17 @@ def _discover_live(targets: List[str]) -> List[Dict]:
             continue
 
         # ---------------------------------------------------------
-        # CIDR TARGET
+        # CIDR NETWORK TARGET
         # ---------------------------------------------------------
         #
         # Example:
         #     192.168.1.0/24
         #
-        # First discover active hosts.
-        # Then perform service/version detection.
-        #
+        # For networks, use -sn to find active hosts first.
+        # Then run the full service/version scan against each
+        # discovered host.
+        # ---------------------------------------------------------
+
         try:
 
             network = ip_network(
@@ -256,13 +279,15 @@ def _discover_live(targets: List[str]) -> List[Dict]:
         except subprocess.TimeoutExpired as exc:
 
             raise RuntimeError(
-                f"Nmap host discovery timed out for {target}."
+                f"Nmap host discovery timed out "
+                f"for {target}."
             ) from exc
 
         except OSError as exc:
 
             raise RuntimeError(
-                f"Unable to execute Nmap for {target}: {exc}"
+                f"Unable to execute Nmap for "
+                f"{target}: {exc}"
             ) from exc
 
         if proc.returncode != 0:
@@ -313,12 +338,22 @@ def _discover_live(targets: List[str]) -> List[Dict]:
                 )
 
             ports = nmap_result.get("ports") or []
-            host_status = str(nmap_result.get("host_status", "unknown")).lower()
+
+            host_status = str(
+                nmap_result.get(
+                    "host_status",
+                    "unknown",
+                )
+            ).lower()
 
             if host_status not in {"up", "unknown"} and not ports:
+
                 print(
-                    f"[DISCOVERY] {host}: no live host after service scan; skipping."
+                    f"[DISCOVERY] {host}: "
+                    f"no live host after service scan; "
+                    f"skipping."
                 )
+
                 continue
 
             devices.append(
@@ -385,6 +420,7 @@ def _parse_nmap_hosts(output: str) -> List[str]:
         # ---------------------------------------------------------
         # hostname (IP)
         # ---------------------------------------------------------
+
         if "(" in value and ")" in value:
 
             candidate = (
@@ -398,7 +434,11 @@ def _parse_nmap_hosts(output: str) -> List[str]:
             # -----------------------------------------------------
             # direct IP / hostname
             # -----------------------------------------------------
-            candidate = value.split()[0].strip()
+
+            candidate = (
+                value.split()[0]
+                .strip()
+            )
 
         try:
 

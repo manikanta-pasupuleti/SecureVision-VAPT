@@ -60,7 +60,7 @@ def scan_host(host: str) -> Dict:
 
     scanner.scan(
         hosts=host,
-        arguments="-sV",
+        arguments="-Pn -sV",
     )
 
     if host not in scanner.all_hosts():
