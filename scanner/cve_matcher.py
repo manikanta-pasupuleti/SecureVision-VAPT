@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence
+from urllib.parse import unquote
 
 
 # ---------------------------------------------------------------------------
@@ -118,38 +119,68 @@ def match_cves(
     *,
     product: str = "",
     version: str = "",
+    cpe: str = "",
 ) -> List[Dict]:
     """Return only CVEs supported by concrete product/version evidence.
 
     The first three positional parameters are retained for compatibility with
     the existing scanner.  Product-level matching should pass ``product`` and
     ``version`` explicitly.  No CVE is produced from service presence alone.
+
+    CPE matching is an additional evidence source when Nmap provides a CPE.
+    Only application CPEs are considered here. Operating-system and hardware
+    CPEs are ignored for application CVE matching.
     """
     observed_product = _normalize_product(product or vendor)
     observed_version = str(version or firmware_version or "").strip()
     services_lower = {str(s).strip().lower() for s in services or []}
 
-    if not observed_product or not _known_version(observed_version):
+    parsed_cpe = _parse_cpe(cpe)
+
+    if not observed_product and not parsed_cpe:
         return []
 
     matched: Dict[str, Dict] = {}
 
     for cve in _CVE_DATABASE:
-        if not _product_matches(observed_product, cve.get("product_aliases", [])):
-            continue
+        cpe_match = _cpe_matches(cve, parsed_cpe)
 
-        if not _version_matches(
-            observed_version,
-            cve.get("affected_versions", []),
-            cve.get("affected_version_ranges", []),
+        product_version_match = False
+
+        if (
+            observed_product
+            and _known_version(observed_version)
         ):
+            product_version_match = (
+                _product_matches(
+                    observed_product,
+                    cve.get("product_aliases", []),
+                )
+                and _version_matches(
+                    observed_version,
+                    cve.get("affected_versions", []),
+                    cve.get("affected_version_ranges", []),
+                )
+            )
+
+        if not cpe_match and not product_version_match:
             continue
 
         affected_services = {
             str(s).lower() for s in cve.get("affected_services", [])
         }
+
         if affected_services and not (affected_services & services_lower):
             continue
+
+        if cpe_match:
+            match_source = "cpe"
+            matched_by = f"CPE {cpe}"
+        else:
+            match_source = "product_version"
+            matched_by = (
+                f"product {product or vendor} + version {observed_version}"
+            )
 
         matched[cve["cve_id"]] = {
             "cve_id": cve["cve_id"],
@@ -165,9 +196,9 @@ def match_cves(
                 else None
             ),
             "affected_services": list(cve.get("affected_services", [])),
-            "matched_by": (
-                f"product {product or vendor} + version {observed_version}"
-            ),
+            "matched_by": matched_by,
+            "match_source": match_source,
+            "observed_cpe": cpe,
             "references": list(cve.get("references", [])),
         }
 
@@ -181,8 +212,10 @@ def match_cves(
 def get_cve_summary(cve_matches: List[Dict]) -> Dict:
     """Summarise CVE matches by severity."""
     breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+
     for cve in cve_matches or []:
         severity = str(cve.get("severity", "")).lower()
+
         if severity in breakdown:
             breakdown[severity] += 1
 
@@ -209,11 +242,156 @@ def _normalize_product(product: str) -> str:
 def _product_matches(observed: str, aliases: Sequence[str]) -> bool:
     for alias in aliases:
         candidate = _normalize_product(alias)
+
         if observed == candidate:
             return True
+
         # Nmap often adds a suffix such as "Server" or "FTPd".
         if observed.startswith(candidate + " "):
             return True
+
+    return False
+
+
+def _parse_cpe(cpe: str) -> Optional[Dict[str, str]]:
+    """Parse CPE 2.2 and CPE 2.3 strings.
+
+    Examples:
+        cpe:/a:mysql:mysql:8.0.44
+        cpe:2.3:a:mysql:mysql:8.0.44:*:*:*:*:*:*:*
+    """
+    value = str(cpe or "").strip()
+
+    if not value:
+        return None
+
+    # CPE 2.3
+    if value.startswith("cpe:2.3:"):
+        parts = value.split(":")
+
+        if len(parts) < 6:
+            return None
+
+        return {
+            "part": _decode_cpe_value(parts[2]),
+            "vendor": _decode_cpe_value(parts[3]),
+            "product": _decode_cpe_value(parts[4]),
+            "version": _decode_cpe_value(parts[5]),
+        }
+
+    # CPE 2.2
+    if value.startswith("cpe:/"):
+        parts = value[5:].split(":")
+
+        if len(parts) < 3:
+            return None
+
+        return {
+            "part": _decode_cpe_value(parts[0]),
+            "vendor": _decode_cpe_value(parts[1]),
+            "product": _decode_cpe_value(parts[2]),
+            "version": (
+                _decode_cpe_value(parts[3])
+                if len(parts) > 3
+                else ""
+            ),
+        }
+
+    return None
+
+
+def _decode_cpe_value(value: str) -> str:
+    """Decode a CPE component."""
+    value = str(value or "")
+
+    if value in {"*", "-"}:
+        return ""
+
+    return unquote(value).strip()
+
+
+def _cpe_matches(
+    cve: Dict,
+    parsed_cpe: Optional[Dict[str, str]],
+) -> bool:
+    """Check whether an application CPE matches a CVE."""
+    if not parsed_cpe:
+        return False
+
+    # CPE parts:
+    #   a = application
+    #   o = operating system
+    #   h = hardware
+    #
+    # This matcher handles application CVEs only.
+    if parsed_cpe.get("part", "").lower() != "a":
+        return False
+
+    cpe_vendor = parsed_cpe.get("vendor", "").lower().strip()
+    cpe_product = parsed_cpe.get("product", "").lower().strip()
+    cpe_version = parsed_cpe.get("version", "").strip()
+
+    if not cpe_vendor or not cpe_product:
+        return False
+
+    if not _known_version(cpe_version):
+        return False
+
+    aliases = [
+        _normalize_product(alias)
+        for alias in cve.get("product_aliases", [])
+    ]
+
+    for alias in aliases:
+        if not alias:
+            continue
+
+        alias_parts = alias.split()
+
+        # Single-word aliases such as:
+        # mysql, boa, dnsmasq
+        #
+        # For these, accept the same vendor/product name.
+        if len(alias_parts) == 1:
+            alias_vendor = alias_parts[0]
+            alias_product = alias_parts[0]
+
+            if (
+                cpe_vendor == alias_vendor
+                and cpe_product == alias_product
+            ):
+                return _version_matches(
+                    cpe_version,
+                    cve.get("affected_versions", []),
+                    cve.get("affected_version_ranges", []),
+                )
+
+            continue
+
+        # Multi-word aliases such as:
+        # oracle mysql
+        # gnu inetutils
+        # boa webserver
+        #
+        # Treat the first word as vendor and the last word
+        # as the product name.
+        alias_vendor = alias_parts[0]
+        alias_product = alias_parts[-1]
+
+        vendor_matches = cpe_vendor == alias_vendor
+
+        product_matches = (
+            cpe_product == alias_product
+            or cpe_product.startswith(alias_product + " ")
+        )
+
+        if vendor_matches and product_matches:
+            return _version_matches(
+                cpe_version,
+                cve.get("affected_versions", []),
+                cve.get("affected_version_ranges", []),
+            )
+
     return False
 
 
@@ -225,10 +403,13 @@ def _known_version(version: str) -> bool:
 
 def _version_tuple(version: str) -> tuple[int, ...]:
     parts = []
+
     for token in str(version).replace("-", ".").split("."):
         digits = "".join(ch for ch in token if ch.isdigit())
+
         if digits:
             parts.append(int(digits))
+
     return tuple(parts) if parts else (0,)
 
 
@@ -241,16 +422,20 @@ def _version_matches(
         return True
 
     current = _version_tuple(version)
+
     if current == (0,):
         return False
 
     for item in ranges:
         minimum = item.get("min")
         maximum = item.get("max")
+
         if minimum and current < _version_tuple(minimum):
             continue
+
         if maximum and current > _version_tuple(maximum):
             continue
+
         return True
 
     return False
