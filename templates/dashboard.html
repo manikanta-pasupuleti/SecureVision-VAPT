@@ -181,7 +181,39 @@
               <span class="muted">High Risk Services</span>
               <strong>{{ exposure.get('high_risk_count', 0) }}</strong>
             </div>
+            {% set ml = intel.ml_analysis or {} %}
+            <div class="mini-card">
+              <span class="muted">ML Anomaly Risk</span>
+              <strong>{{ ml.get('anomaly_score', 0) }}/100</strong>
+              <span class="muted">{{ ml.get('risk_level', 'Not evaluated') }}</span>
+            </div>
           </div>
+
+          {% if ml %}
+            <div class="mini-card" style="margin-top:0.8rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <strong>Machine Learning Risk Analysis</strong>
+                <span class="pill">{{ ml.get('model', 'ML model') }}</span>
+              </div>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                Task: {{ ml.get('task', 'Exposure anomaly detection') }}
+              </p>
+              <p class="muted" style="margin-bottom:0.35rem;">
+                ML anomaly score: <strong>{{ ml.get('anomaly_score', 0) }}/100</strong>
+                &nbsp;|&nbsp;
+                Level: <strong>{{ ml.get('risk_level', 'Unknown') }}</strong>
+              </p>
+              {% if ml.get('top_signals') %}
+                <p class="muted" style="margin-bottom:0.25rem;"><strong>Top contributing signals</strong></p>
+                {% for signal in ml.get('top_signals', []) %}
+                  <p class="muted" style="margin:0.2rem 0 0;">• {{ signal }}</p>
+                {% endfor %}
+              {% endif %}
+              <p class="muted" style="margin:0.6rem 0 0;">
+                {{ ml.get('interpretation', '') }}
+              </p>
+            </div>
+          {% endif %}
 
           <div class="grid-2" style="margin-top:0.8rem;">
             <!-- Firmware / OS -->

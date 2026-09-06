@@ -33,6 +33,10 @@ ASSESSMENT_STAGES: List[Dict[str, str]] = [
         "description": "Calculate severity and prioritize findings based on impact and exploitability.",
     },
     {
+        "name": "ML Risk Anomaly Detection",
+        "description": "Use an unsupervised Isolation Forest model to identify unusual exposure profiles and support risk prioritization.",
+    },
+    {
         "name": "Remediation Engine",
         "description": "Provide actionable mitigation guidance aligned to the assessment findings.",
     },

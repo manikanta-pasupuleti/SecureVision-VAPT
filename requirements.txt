@@ -10,3 +10,4 @@ Jinja2
 tabulate
 schedule
 colorama
+scikit-learn>=1.4,<2

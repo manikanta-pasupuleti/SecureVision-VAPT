@@ -9,6 +9,7 @@ from scanner.pipeline import get_assessment_pipeline
 from scanner.report import generate_report
 from scanner.risk_score import calculate_risk_score
 from scanner.vulnerability import scan_vulnerabilities
+from ml.risk_anomaly import analyze_device_ml_risk
 
 from utils.helpers import parse_target_input
 from utils.logger import get_logger
@@ -73,6 +74,16 @@ def run_scan(target_spec: str, mode: str = "live"):
         print("=================================\n")
 
         device_findings = scan_vulnerabilities(fingerprinted)
+
+        # ML layer: detect unusual exposure profiles independently of the
+        # deterministic risk score.  The ML signal is stored in intelligence
+        # and does not replace evidence-based CVE matching.
+        ml_analysis = analyze_device_ml_risk(fingerprinted, device_findings)
+        fingerprinted["intelligence"]["ml_analysis"] = ml_analysis
+
+        print("\n========== ML RISK ANALYSIS ==========")
+        print(ml_analysis)
+        print("======================================\n")
 
         print("\n========== FINDINGS ==========")
         for finding in device_findings:
