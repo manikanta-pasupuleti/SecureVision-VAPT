@@ -69,6 +69,55 @@ scanning does not silently fall back to simulated data.
 
 ------------------------------------------------------------------------
 
+## Academic Demonstration and Evaluation
+
+SecureVision VAPT is suitable for an AIML mini project because it combines
+an observable security pipeline with an explainable unsupervised learning
+component. The project should be evaluated as a prioritization system, not
+as a replacement for a product-specific vulnerability scanner.
+
+### Reproducible demo
+
+Use **Simulation - repeatable academic demo** in the web scan form and enter
+any private-looking test target such as `192.168.1.50`. The simulator does
+not contact that address. It deterministically selects a surveillance
+vendor profile from the target string, adds CCTV-oriented services, runs
+fingerprinting and intelligence enrichment, and stores a complete report.
+
+Use **Live Nmap - authorized network only** only when testing a device or
+network that you own or have explicit permission to assess. Live discovery
+never falls back to simulated data.
+
+### Machine-learning methodology
+
+The Isolation Forest model consumes eleven evidence-derived features:
+
+- Open service count and high/medium-risk service counts
+- Unencrypted service count
+- CVE count, maximum CVSS, and potentially exploitable CVE count
+- Default credential exposure
+- Outdated and end-of-life firmware indicators
+- RTSP/ONVIF surveillance-service exposure
+
+The model is trained against a documented bootstrap baseline when there is
+not enough historical evidence. Its output is an anomaly score from 0 to
+100 and a Low/Medium/High priority level. The score indicates unusual
+exposure compared with the baseline; it does not prove that a vulnerability
+exists. Because the model is unsupervised, accuracy claims require a
+separately labeled evaluation dataset and are intentionally not fabricated
+by this project.
+
+### Suggested academic evaluation
+
+Record several simulated profiles with different service and vulnerability
+combinations. Compare feature vectors, anomaly scores, deterministic risk
+scores, and confirmed CVE matches. Report which evidence produced each
+priority decision, then discuss false positives, false negatives, baseline
+bias, and the limitation that simulated data is not a substitute for a
+real camera dataset.
+
+------------------------------------------------------------------------
+
 ## 🎯 Objectives
 
 -   Discover hosts and exposed network services within an authorized

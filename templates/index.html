@@ -23,8 +23,13 @@
           Target IP range or device list
           <textarea name="targets" placeholder="192.168.1.0/28, 192.168.1.50, 10.10.2.0/30"></textarea>
         </label>
-        <label class="inline">
-          <input type="checkbox" name="live" value="1"> Enable live discovery (nmap)
+        <label>
+          Assessment mode
+          <select name="mode">
+            <option value="simulated" selected>Simulation - repeatable academic demo</option>
+            <option value="live">Live Nmap - authorized network only</option>
+          </select>
+          <span class="muted">Simulation uses deterministic CCTV profiles and does not contact a network.</span>
         </label>
         <button class="button" type="submit">Run assessment</button>
       </form>
