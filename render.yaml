@@ -8,5 +8,5 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: SECUREVISION_DB_PATH
-        value: /tmp/securevision/database.db
+      - key: DATABASE_URL
+        sync: false

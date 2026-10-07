@@ -1,26 +1,255 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import sqlite3
-from scanner.os_detection import get_attack_surface
 from datetime import datetime
 from pathlib import Path
 
+from scanner.os_detection import get_attack_surface
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = Path(os.environ.get("SECUREVISION_DB_PATH", Path(__file__).resolve().parent / "database.db"))
 
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+# Local development keeps using SQLite. Render uses PostgreSQL when DATABASE_URL
+# is configured, so database data lives outside Render's ephemeral filesystem.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DB_PATH = Path(
+    os.environ.get("SECUREVISION_DB_PATH", Path(__file__).resolve().parent / "database.db")
+)
+
+if not DATABASE_URL:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+class _CompatRow(tuple):
+    """A small row object compatible with sqlite3.Row-style access."""
+
+    def __new__(cls, values, columns):
+        obj = super().__new__(cls, values)
+        obj._columns = list(columns)
+        obj._index = {name: i for i, name in enumerate(columns)}
+        return obj
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return super().__getitem__(self._index[key])
+        return super().__getitem__(key)
+
+    def keys(self):
+        return self._columns
+
+
+class _PostgresCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    @property
+    def lastrowid(self):
+        # Kept only for compatibility with older callers. New inserts use
+        # RETURNING id explicitly.
+        return None
+
+    def _wrap(self, row):
+        if row is None:
+            return None
+        columns = [description.name for description in self._cursor.description or []]
+        return _CompatRow(row, columns)
+
+    def fetchone(self):
+        return self._wrap(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._wrap(row) for row in self._cursor.fetchall()]
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class _PostgresConnection:
+    """SQLite-compatible execute/fetch facade over psycopg."""
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    @staticmethod
+    def _convert_placeholders(sql: str) -> str:
+        # SecureVision's existing SQL uses SQLite's ? placeholders. PostgreSQL
+        # uses %s, so translate them centrally without changing every module.
+        return sql.replace("?", "%s")
+
+    def execute(self, sql, params=None):
+        cursor = self._connection.cursor()
+        cursor.execute(self._convert_placeholders(sql), params or ())
+        return _PostgresCursor(cursor)
+
+    def executescript(self, sql):
+        # PostgreSQL accepts multiple statements in one execute call.
+        cursor = self._connection.cursor()
+        cursor.execute(sql)
+        return _PostgresCursor(cursor)
+
+    def commit(self):
+        self._connection.commit()
+
+    def rollback(self):
+        self._connection.rollback()
+
+    def close(self):
+        self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type:
+            self._connection.rollback()
+        else:
+            self._connection.commit()
+        self._connection.close()
 
 
 def get_connection():
+    if DATABASE_URL:
+        import psycopg
+
+        return _PostgresConnection(
+            psycopg.connect(DATABASE_URL, connect_timeout=10)
+        )
+
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
 
+def _postgres_columns(connection, table_name):
+    rows = connection.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ?
+        """,
+        (table_name,),
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
 def init_db():
+    if not DATABASE_URL:
+        _init_sqlite_db()
+        return
+
+    with get_connection() as connection:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS reports (
+                id BIGSERIAL PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                target_spec TEXT NOT NULL,
+                device_count INTEGER NOT NULL,
+                finding_count INTEGER NOT NULL,
+                risk_score INTEGER NOT NULL,
+                summary_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS devices (
+                id BIGSERIAL PRIMARY KEY,
+                report_id BIGINT NOT NULL REFERENCES reports(id),
+                ip_address TEXT NOT NULL,
+                vendor TEXT NOT NULL,
+                model TEXT NOT NULL,
+                firmware_version TEXT NOT NULL,
+                services_json TEXT NOT NULL,
+                risk_score INTEGER NOT NULL,
+                intelligence_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS findings (
+                id BIGSERIAL PRIMARY KEY,
+                report_id BIGINT NOT NULL REFERENCES reports(id),
+                device_ip TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                remediation TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                technical_explanation TEXT DEFAULT '',
+                business_impact TEXT DEFAULT '',
+                exploitability TEXT DEFAULT '',
+                attack_scenario TEXT DEFAULT '',
+                risk_justification TEXT DEFAULT '',
+                cve_references_json TEXT DEFAULT '[]',
+                references_json TEXT DEFAULT '[]'
+            );
+
+            CREATE TABLE IF NOT EXISTS assets (
+                id BIGSERIAL PRIMARY KEY,
+                ip_address TEXT NOT NULL UNIQUE,
+                vendor TEXT NOT NULL,
+                model TEXT NOT NULL,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                current_firmware TEXT NOT NULL,
+                current_risk_score INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                owner TEXT DEFAULT '',
+                location TEXT DEFAULT '',
+                notes TEXT DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS asset_history (
+                id BIGSERIAL PRIMARY KEY,
+                asset_id BIGINT NOT NULL REFERENCES assets(id),
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                report_id BIGINT REFERENCES reports(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS alerts (
+                id BIGSERIAL PRIMARY KEY,
+                alert_id TEXT NOT NULL UNIQUE,
+                alert_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                device_ip TEXT,
+                report_id BIGINT REFERENCES reports(id),
+                timestamp TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+                acknowledged INTEGER DEFAULT 0,
+                acknowledged_at TEXT,
+                acknowledged_by TEXT
+            );
+            """
+        )
+
+        # Safe migrations for databases created by an earlier SecureVision
+        # PostgreSQL version.
+        device_cols = _postgres_columns(connection, "devices")
+        if "intelligence_json" not in device_cols:
+            connection.execute(
+                "ALTER TABLE devices ADD COLUMN intelligence_json TEXT NOT NULL DEFAULT '{}'"
+            )
+
+        finding_cols = _postgres_columns(connection, "findings")
+        for col in [
+            "technical_explanation",
+            "business_impact",
+            "exploitability",
+            "attack_scenario",
+            "risk_justification",
+            "cve_references_json",
+            "references_json",
+        ]:
+            if col not in finding_cols:
+                connection.execute(
+                    f"ALTER TABLE findings ADD COLUMN {col} TEXT DEFAULT ''"
+                )
+
+
+def _init_sqlite_db():
+    """Original SQLite schema retained for local/offline development."""
     with get_connection() as connection:
         connection.executescript(
             """
@@ -111,100 +340,64 @@ def init_db():
             );
             """
         )
-        # Migrate existing databases that predate intelligence_json column
+
         existing = {row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()}
         if "intelligence_json" not in existing:
             connection.execute("ALTER TABLE devices ADD COLUMN intelligence_json TEXT NOT NULL DEFAULT '{}'")
-            connection.commit()
 
-        # Migrate existing databases that predate assets tables
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        if "assets" not in tables:
-            connection.executescript(
-                """
-                CREATE TABLE assets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ip_address TEXT NOT NULL UNIQUE,
-                    vendor TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    first_seen TEXT NOT NULL,
-                    last_seen TEXT NOT NULL,
-                    current_firmware TEXT NOT NULL,
-                    current_risk_score INTEGER NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    owner TEXT DEFAULT '',
-                    location TEXT DEFAULT '',
-                    notes TEXT DEFAULT ''
-                );
-                CREATE TABLE asset_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    asset_id INTEGER NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    old_value TEXT,
-                    new_value TEXT,
-                    report_id INTEGER,
-                    FOREIGN KEY(asset_id) REFERENCES assets(id),
-                    FOREIGN KEY(report_id) REFERENCES reports(id)
-                );
-                """
-            )
-            connection.commit()
-
-        # Migrate existing databases that predate intelligence columns in findings
         findings_cols = {row[1] for row in connection.execute("PRAGMA table_info(findings)").fetchall()}
-        if "technical_explanation" not in findings_cols:
-            for col in ["technical_explanation", "business_impact", "exploitability", "attack_scenario", "risk_justification", "cve_references_json", "references_json"]:
+        for col in [
+            "technical_explanation",
+            "business_impact",
+            "exploitability",
+            "attack_scenario",
+            "risk_justification",
+            "cve_references_json",
+            "references_json",
+        ]:
+            if col not in findings_cols:
                 try:
                     connection.execute(f"ALTER TABLE findings ADD COLUMN {col} TEXT DEFAULT ''")
                 except sqlite3.OperationalError:
                     pass
-            connection.commit()
-
-        # Migrate existing databases that predate alerts table
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        if "alerts" not in tables:
-            connection.execute(
-                """
-                CREATE TABLE alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    alert_id TEXT NOT NULL UNIQUE,
-                    alert_type TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    device_ip TEXT,
-                    report_id INTEGER,
-                    timestamp TEXT NOT NULL,
-                    metadata TEXT DEFAULT '{}',
-                    acknowledged INTEGER DEFAULT 0,
-                    acknowledged_at TEXT,
-                    acknowledged_by TEXT,
-                    FOREIGN KEY(report_id) REFERENCES reports(id)
-                )
-                """
-            )
-            connection.commit()
+        connection.commit()
 
 
 def save_scan(target_spec, device_rows, findings, summary):
     created_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO reports (created_at, target_spec, device_count, finding_count, risk_score, summary_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                created_at,
-                target_spec,
-                len(device_rows),
-                len(findings),
-                summary["risk_score"],
-                json.dumps(summary),
-            ),
-        )
-        report_id = cursor.lastrowid
+        if DATABASE_URL:
+            cursor = connection.execute(
+                """
+                INSERT INTO reports (created_at, target_spec, device_count, finding_count, risk_score, summary_json)
+                VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+                """,
+                (
+                    created_at,
+                    target_spec,
+                    len(device_rows),
+                    len(findings),
+                    summary["risk_score"],
+                    json.dumps(summary),
+                ),
+            )
+            report_id = cursor.fetchone()[0]
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO reports (created_at, target_spec, device_count, finding_count, risk_score, summary_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    created_at,
+                    target_spec,
+                    len(device_rows),
+                    len(findings),
+                    summary["risk_score"],
+                    json.dumps(summary),
+                ),
+            )
+            report_id = cursor.lastrowid
 
         for device in device_rows:
             connection.execute(
@@ -401,7 +594,6 @@ def get_device_detail(report_id, ip_address):
     }
 
 
-
 def _canonical_service_name(name, port=None):
     service = str(name or "").strip().lower()
     try:
@@ -422,13 +614,6 @@ def _canonical_service_name(name, port=None):
 
 
 def _normalize_services(stored_services, intelligence):
-    """Return one authoritative service list for every report view.
-
-    Older reports may have stored 443/tcp as generic ``http`` even though
-    the detailed Nmap evidence correctly identified HTTPS.  The persisted
-    enriched service records contain the port, so they are used to repair
-    that historical representation at read time.
-    """
     candidates = []
 
     for item in (intelligence or {}).get("enriched_services", []) or []:
@@ -446,8 +631,13 @@ def _normalize_services(stored_services, intelligence):
         if name:
             candidates.append((None, name))
 
-    # Stable service order follows network port order where available.
-    candidates.sort(key=lambda x: (0 if x[0] is not None else 1, int(x[0]) if str(x[0]).isdigit() else 99999, x[1]))
+    candidates.sort(
+        key=lambda x: (
+            0 if x[0] is not None else 1,
+            int(x[0]) if str(x[0]).isdigit() else 99999,
+            x[1],
+        )
+    )
 
     result = []
     seen = set()
@@ -459,7 +649,6 @@ def _normalize_services(stored_services, intelligence):
 
 
 def _normalize_intelligence(intelligence, services):
-    """Make persisted intelligence agree with the canonical service list."""
     intel = dict(intelligence or {})
     enriched = []
     seen = set()
@@ -485,6 +674,7 @@ def _normalize_intelligence(intelligence, services):
         services,
     )
     return intel
+
 
 def _build_report(row, include_details=True):
     if row is None:
@@ -517,15 +707,17 @@ def _build_report(row, include_details=True):
         intelligence = json.loads(device_row["intelligence_json"] or "{}")
         services = _normalize_services(stored_services, intelligence)
         intelligence = _normalize_intelligence(intelligence, services)
-        report["devices"].append({
-            "ip_address": device_row["ip_address"],
-            "vendor": device_row["vendor"],
-            "model": device_row["model"],
-            "firmware_version": device_row["firmware_version"],
-            "services": services,
-            "risk_score": device_row["risk_score"],
-            "intelligence": intelligence,
-        })
+        report["devices"].append(
+            {
+                "ip_address": device_row["ip_address"],
+                "vendor": device_row["vendor"],
+                "model": device_row["model"],
+                "firmware_version": device_row["firmware_version"],
+                "services": services,
+                "risk_score": device_row["risk_score"],
+                "intelligence": intelligence,
+            }
+        )
     report["findings"] = [
         {
             "device_ip": finding_row["device_ip"],

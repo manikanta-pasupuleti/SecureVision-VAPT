@@ -1,19 +1,8 @@
 from __future__ import annotations
 
-import json
-import sqlite3
 from datetime import datetime
-from pathlib import Path
-import os
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = Path(os.environ.get("SECUREVISION_DB_PATH", Path(__file__).resolve().parent / "database.db"))
-
-
-def get_connection():
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+from database.db import get_connection, DATABASE_URL
 
 
 def get_or_create_asset(ip_address: str, vendor: str, model: str, report_id: int) -> int:
@@ -30,16 +19,30 @@ def get_or_create_asset(ip_address: str, vendor: str, model: str, report_id: int
             )
             connection.commit()
             return existing["id"]
-        cursor = connection.execute(
-            """
-            INSERT INTO assets (
-                ip_address, vendor, model, first_seen, last_seen, current_firmware, current_risk_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (ip_address, vendor, model, now, now, "", 0),
-        )
+
+        if DATABASE_URL:
+            cursor = connection.execute(
+                """
+                INSERT INTO assets (
+                    ip_address, vendor, model, first_seen, last_seen, current_firmware, current_risk_score
+                ) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
+                """,
+                (ip_address, vendor, model, now, now, "", 0),
+            )
+            asset_id = cursor.fetchone()[0]
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO assets (
+                    ip_address, vendor, model, first_seen, last_seen, current_firmware, current_risk_score
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (ip_address, vendor, model, now, now, "", 0),
+            )
+            asset_id = cursor.lastrowid
+
         connection.commit()
-        return cursor.lastrowid
+        return asset_id
 
 
 def update_asset_from_scan(asset_id: int, firmware: str, risk_score: int, report_id: int) -> None:
@@ -77,9 +80,7 @@ def update_asset_from_scan(asset_id: int, firmware: str, risk_score: int, report
 def list_assets() -> list:
     """Return all assets with current status."""
     with get_connection() as connection:
-        rows = connection.execute(
-            "SELECT * FROM assets ORDER BY last_seen DESC"
-        ).fetchall()
+        rows = connection.execute("SELECT * FROM assets ORDER BY last_seen DESC").fetchall()
     return [
         {
             "id": row["id"],
@@ -102,9 +103,7 @@ def list_assets() -> list:
 def get_asset(asset_id: int) -> dict:
     """Get asset detail with full history."""
     with get_connection() as connection:
-        asset_row = connection.execute(
-            "SELECT * FROM assets WHERE id = ?", (asset_id,)
-        ).fetchone()
+        asset_row = connection.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
         if not asset_row:
             return None
         history_rows = connection.execute(
@@ -162,15 +161,9 @@ def get_asset_stats() -> dict:
     """Return aggregate asset statistics."""
     with get_connection() as connection:
         total = connection.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
-        active = connection.execute(
-            "SELECT COUNT(*) FROM assets WHERE status = 'active'"
-        ).fetchone()[0]
-        high_risk = connection.execute(
-            "SELECT COUNT(*) FROM assets WHERE current_risk_score >= 70"
-        ).fetchone()[0]
-        critical_risk = connection.execute(
-            "SELECT COUNT(*) FROM assets WHERE current_risk_score >= 90"
-        ).fetchone()[0]
+        active = connection.execute("SELECT COUNT(*) FROM assets WHERE status = 'active'").fetchone()[0]
+        high_risk = connection.execute("SELECT COUNT(*) FROM assets WHERE current_risk_score >= 70").fetchone()[0]
+        critical_risk = connection.execute("SELECT COUNT(*) FROM assets WHERE current_risk_score >= 90").fetchone()[0]
     return {
         "total_assets": total,
         "active_assets": active,
