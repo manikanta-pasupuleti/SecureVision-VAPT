@@ -76,3 +76,18 @@ def test_dashboard_uses_latest_report(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert b"Unknown" in response.data
+
+
+def test_dashboard_returns_not_found_for_unknown_report(monkeypatch, tmp_path):
+    db_path = tmp_path / "dashboard-missing-report.db"
+    monkeypatch.setenv("SECUREVISION_DB_PATH", str(db_path))
+    db_module.DB_PATH = db_path
+    db_module.init_db()
+
+    app = create_app()
+    with app.test_client() as client:
+        response = client.get("/dashboard?report_id=999999")
+
+    assert response.status_code == 404
+    assert b"Report #999999 was not found." in response.data
+    assert b"/reports" in response.data

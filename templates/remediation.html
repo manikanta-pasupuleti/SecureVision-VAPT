@@ -38,9 +38,16 @@
   <script>
     // Load all workflows
     fetch('/api/remediation/workflows')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Workflow request failed: ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         const container = document.getElementById('workflowsContainer');
+        if (!data.workflows || data.workflows.length === 0) {
+          container.innerHTML = '<p class="muted">No remediation workflows are currently available.</p>';
+          return;
+        }
         container.innerHTML = data.workflows.map(wf => `
           <div class="mini-card" style="cursor: pointer; padding: 1.2rem;" onclick="loadWorkflow('${wf.id}')">
             <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -53,7 +60,11 @@
           </div>
         `).join('');
       })
-      .catch(err => console.error('Error loading workflows:', err));
+      .catch(err => {
+        console.error('Error loading workflows:', err);
+        document.getElementById('workflowsContainer').innerHTML =
+          '<p class="muted">Remediation workflows are temporarily unavailable.</p>';
+      });
 
     function loadWorkflow(workflowId) {
       fetch(`/api/remediation/workflow/${workflowId}`)

@@ -24,6 +24,8 @@
         <div class="mini-card"><span class="muted">Findings</span><strong>{{ report.finding_count }}</strong></div>
         <div class="mini-card"><span class="muted">Critical</span><strong>{{ report.summary.severity_breakdown.critical }}</strong></div>
       </div>
+    {% elif report_error %}
+      <p class="muted">{{ report_error }} <a href="{{ url_for('reports.reports') }}">View report history.</a></p>
     {% else %}
       <p class="muted">Run a scan from the home page to populate the dashboard.</p>
     {% endif %}
@@ -437,8 +439,20 @@
         const riskEntries = Object.entries(data.risk_distribution || {})
           .filter(([, count]) => Number(count) > 0);
 
-        const riskCtx = document.getElementById('riskChart').getContext('2d');
-        new Chart(riskCtx, {
+        const showChartFallback = (canvasId, message) => {
+          const canvas = document.getElementById(canvasId);
+          canvas.style.display = 'none';
+          const fallback = document.createElement('p');
+          fallback.className = 'muted';
+          fallback.textContent = message;
+          canvas.parentElement.appendChild(fallback);
+        };
+
+        if (riskEntries.length === 0) {
+          showChartFallback('riskChart', 'No finding severity data available.');
+        } else {
+          const riskCtx = document.getElementById('riskChart').getContext('2d');
+          new Chart(riskCtx, {
           type: 'doughnut',
           data: {
             labels: riskEntries.map(([severity]) => severity),
@@ -455,12 +469,16 @@
               legend: { position: 'bottom' }
             }
           }
-        });
+          });
+        }
 
         // Device Risk Timeline: analytics returns only real scan/report dates.
         const timeline = data.device_risk_timeline || [];
-        const timelineCtx = document.getElementById('timelineChart').getContext('2d');
-        new Chart(timelineCtx, {
+        if (timeline.length === 0) {
+          showChartFallback('timelineChart', 'No device risk history available.');
+        } else {
+          const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+          new Chart(timelineCtx, {
           type: 'line',
           data: {
             labels: timeline.map(d => d.date),
@@ -482,7 +500,8 @@
               y: { beginAtZero: true, max: 100 }
             }
           }
-        });
+          });
+        }
 
         // CVE Trends remain a 30-day activity view. Zero days are valid here
         // because this chart intentionally represents the selected time window.
@@ -534,8 +553,11 @@
         `;
 
         const services = data.service_exposure || [];
-        const servicesCtx = document.getElementById('servicesChart').getContext('2d');
-        new Chart(servicesCtx, {
+        if (services.length === 0) {
+          showChartFallback('servicesChart', 'No exposed services recorded.');
+        } else {
+          const servicesCtx = document.getElementById('servicesChart').getContext('2d');
+          new Chart(servicesCtx, {
           type: 'bar',
           data: {
             labels: services.map(s => s.service),
@@ -554,10 +576,19 @@
               x: { beginAtZero: true, ticks: { precision: 0 } }
             }
           }
-        });
+          });
+        }
       })
       .catch(err => {
         console.error('Analytics error:', err);
+        document.querySelectorAll('.analytics-fallback').forEach(node => node.remove());
+        document.querySelectorAll('canvas').forEach(canvas => {
+          canvas.style.display = 'none';
+          const fallback = document.createElement('p');
+          fallback.className = 'muted analytics-fallback';
+          fallback.textContent = 'Analytics are temporarily unavailable.';
+          canvas.parentElement.appendChild(fallback);
+        });
       });
   </script>
 {% endblock %}
