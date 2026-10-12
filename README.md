@@ -52,13 +52,18 @@ Target scope
 
 The screenshots below were captured from the deployed application and are included as documentation assets.
 
-### Assessment dashboard
-
-![SecureVision VAPT dashboard](docs/screenshots/dashboard.png)
-
-### Report history and exports
-
-![SecureVision VAPT report history](docs/screenshots/reports.png)
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Assessment dashboard</strong><br><br>
+      <img src="docs/screenshots/dashboard.png" alt="SecureVision VAPT assessment dashboard" width="100%">
+    </td>
+    <td align="center" width="50%">
+      <strong>Report history and exports</strong><br><br>
+      <img src="docs/screenshots/reports.png" alt="SecureVision VAPT report history and exports" width="100%">
+    </td>
+  </tr>
+</table>
 
 ## Assessment modes
 
