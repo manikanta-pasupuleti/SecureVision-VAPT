@@ -50,20 +50,31 @@ Target scope
 
 ## Screenshots
 
-The screenshots below were captured from the deployed application and are included as documentation assets.
+The following feature-specific screenshots were captured from the deployed application. Each grid groups related screens so the product workflow is easy to understand without mixing unrelated views.
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Assessment dashboard</strong><br><br>
-      <img src="docs/screenshots/dashboard.png" alt="SecureVision VAPT assessment dashboard" width="100%">
-    </td>
-    <td align="center" width="50%">
-      <strong>Report history and exports</strong><br><br>
-      <img src="docs/screenshots/reports.png" alt="SecureVision VAPT report history and exports" width="100%">
-    </td>
-  </tr>
-</table>
+### 1. Assessment and analytics
+
+| Quick assessment | Risk dashboard |
+| --- | --- |
+| <img src="docs/screenshots/home.png" alt="SecureVision VAPT quick assessment screen" width="100%"> | <img src="docs/screenshots/dashboard.png" alt="SecureVision VAPT risk dashboard" width="100%"> |
+
+The home screen starts a simulation or authorized live Nmap assessment. The dashboard then summarizes risk, findings, device exposure, CVE context, and anomaly signals.
+
+### 2. Asset and device intelligence
+
+| Asset inventory | Device inventory |
+| --- | --- |
+| <img src="docs/screenshots/assets.png" alt="SecureVision VAPT asset inventory" width="100%"> | <img src="docs/screenshots/devices.png" alt="SecureVision VAPT device inventory" width="100%"> |
+
+The asset view tracks persistent device history and risk state. The device view focuses on discovered vendors, firmware, exposed services, and report-level risk.
+
+### 3. Reporting and response
+
+| Report history and exports | Remediation workflows | Alert management |
+| --- | --- | --- |
+| <img src="docs/screenshots/reports.png" alt="SecureVision VAPT report history and exports" width="100%"> | <img src="docs/screenshots/remediation.png" alt="SecureVision VAPT remediation workflows" width="100%"> | <img src="docs/screenshots/alerts.png" alt="SecureVision VAPT alert management" width="100%"> |
+
+Reports preserve historical assessments and provide PDF, CSV, and JSON exports. Remediation turns findings into step-by-step workflows, while alert management tracks thresholds and security events.
 
 ## Assessment modes
 
