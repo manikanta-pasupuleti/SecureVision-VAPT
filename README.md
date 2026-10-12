@@ -1,990 +1,277 @@
 # SecureVision VAPT
 
-> **Web-based Vulnerability Assessment and Penetration Testing (VAPT)
-> platform for network and surveillance-device security assessment.**
+> A surveillance-focused vulnerability and exposure assessment platform for authorized security testing.
 
-SecureVision VAPT is a Flask-based cybersecurity assessment platform
-that combines **Nmap-based network discovery, service/version
-fingerprinting, vulnerability correlation, risk scoring, remediation
-guidance, historical reporting, analytics, and a web dashboard** into a
-single workflow.
+[![Live Demo](https://img.shields.io/badge/Live%20demo-securevision--vapt.onrender.com-0f766e?style=for-the-badge)](https://securevision-vapt.onrender.com/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-web%20application-000000?style=flat-square&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![Nmap](https://img.shields.io/badge/Nmap-network%20discovery-4682B4?style=flat-square)](https://nmap.org/)
 
-The project is designed primarily for **authorized security assessments,
-academic demonstration, defensive security research, and
-vulnerability-management workflows**.
+SecureVision VAPT brings network discovery, device fingerprinting, service exposure analysis, conservative CVE correlation, deterministic risk scoring, anomaly detection, remediation guidance, historical reporting, and security exports into one workflow.
 
-------------------------------------------------------------------------
+The platform is designed for:
 
-## 📌 Overview
+- Authorized CCTV, DVR, NVR, and network-device assessments
+- Defensive security research and academic demonstrations
+- Security teams that need explainable findings and remediation priorities
+- Repeatable testing through deterministic simulation when hardware is unavailable
 
-SecureVision VAPT follows a structured assessment pipeline:
+**Live application:** [securevision-vapt.onrender.com](https://securevision-vapt.onrender.com/)
 
-``` text
-Target Scope
-     │
-     ▼
-Network Discovery
-     │
-     ▼
-Nmap Service & Version Detection
-     │
-     ▼
-Device Fingerprinting
-     │
-     ├── Vendor / Model
-     ├── Services
-     ├── Product / Version
-     ├── CPE
-     └── Device Type / OS Context
-     │
-     ▼
-Vulnerability Analysis
-     │
-     ├── Service Exposure Checks
-     ├── Credential Risk Checks
-     ├── Firmware Analysis
-     └── CPE / Product / Version → CVE Correlation
-     │
-     ▼
-Risk Scoring
-     │
-     ▼
-Remediation Recommendations
-     │
-     ▼
-SQLite Persistence
-     │
-     ├── Reports
-     ├── Devices
-     ├── Findings
-     └── Assets / Alerts
-     │
-     ▼
-Dashboard / Analytics / Reports / API
+## Product at a glance
+
+The application guides an assessor from a target list to an actionable report:
+
+```text
+Target scope
+    -> Host discovery
+    -> Nmap service/version detection
+    -> Device fingerprinting
+    -> Service, credential, and firmware analysis
+    -> Evidence-based CVE correlation
+    -> Rule-based risk score + ML anomaly signal
+    -> Remediation recommendations
+    -> Historical persistence, dashboard, API, and exports
 ```
 
-The application supports both **live Nmap scanning** and a separate
-simulated discovery mode for deterministic development/testing. Live
-scanning does not silently fall back to simulated data.
+### Key capabilities
 
-------------------------------------------------------------------------
+| Capability | What it provides |
+| --- | --- |
+| Scope-aware discovery | Individual IPv4 addresses, hostnames, CIDR ranges, and comma-separated targets |
+| Live Nmap assessment | TCP connect scanning with service and version detection, CPE evidence, and explicit failure reporting |
+| Deterministic simulation | Repeatable CCTV profiles for demos, tests, and academic evaluation without contacting the supplied target |
+| Device fingerprinting | Vendor, model, firmware, platform, device type, confidence, products, versions, and observed CPEs |
+| Surveillance-aware checks | RTSP, ONVIF, Telnet, FTP, HTTP/HTTPS, and other service exposure patterns |
+| Conservative vulnerability intelligence | CVE matches require sufficient product/version/service evidence; an open port is not treated as proof of a CVE |
+| Risk prioritization | Explainable 0-100 severity score plus an independent Isolation Forest anomaly score |
+| Remediation workflow | Technical context, business impact, attack scenario, and prioritized corrective guidance |
+| Reporting and integration | Dashboard, historical reports, PDF/CSV/JSON exports, and REST API endpoints |
 
-## Academic Demonstration and Evaluation
+## Screenshots
 
-SecureVision VAPT is suitable for an AIML mini project because it combines
-an observable security pipeline with an explainable unsupervised learning
-component. The project should be evaluated as a prioritization system, not
-as a replacement for a product-specific vulnerability scanner.
+The screenshots below were captured from the deployed application and are included as documentation assets.
 
-### Reproducible demo
+### Assessment dashboard
 
-Use **Simulation - repeatable academic demo** in the web scan form and enter
-any private-looking test target such as `192.168.1.50`. The simulator does
-not contact that address. It deterministically selects a surveillance
-vendor profile from the target string, adds CCTV-oriented services, runs
-fingerprinting and intelligence enrichment, and stores a complete report.
+![SecureVision VAPT dashboard](docs/screenshots/dashboard.png)
 
-Use **Live Nmap - authorized network only** only when testing a device or
-network that you own or have explicit permission to assess. Live discovery
-never falls back to simulated data.
+### Report history and exports
 
-### Machine-learning methodology
+![SecureVision VAPT report history](docs/screenshots/reports.png)
 
-The Isolation Forest model consumes eleven evidence-derived features:
+## Assessment modes
 
-- Open service count and high/medium-risk service counts
-- Unencrypted service count
-- CVE count, maximum CVSS, and potentially exploitable CVE count
+### Simulation — repeatable academic demo
+
+Simulation mode uses deterministic surveillance profiles selected from the target string. It does not contact the supplied address. Use it to demonstrate the full pipeline, compare profiles, and create repeatable test data.
+
+Example target:
+
+```text
+192.168.1.50
+```
+
+### Live Nmap — authorized network only
+
+Live mode performs real discovery and service/version detection. It never silently falls back to simulated data if Nmap fails.
+
+Only scan systems and networks that you own or are explicitly authorized to assess.
+
+## Risk and ML methodology
+
+### Deterministic risk score
+
+Findings are categorized as Critical, High, Medium, Low, or Informational and weighted as follows:
+
+| Severity | Weight |
+| --- | ---: |
+| Critical | 40 |
+| High | 25 |
+| Medium | 12 |
+| Low | 4 |
+| Informational | 1 |
+
+The aggregate score is capped at 100 to provide a simple prioritization scale.
+
+### Isolation Forest anomaly detection
+
+The ML layer is intentionally separate from CVE matching and the rule-based score. It extracts eleven evidence-derived features, including:
+
+- Open, high-risk, medium-risk, and unencrypted service counts
+- CVE count, maximum CVSS, and potentially exploitable CVE evidence
 - Default credential exposure
 - Outdated and end-of-life firmware indicators
-- RTSP/ONVIF surveillance-service exposure
+- RTSP and ONVIF exposure
 
-The model is trained against a documented bootstrap baseline when there is
-not enough historical evidence. Its output is an anomaly score from 0 to
-100 and a Low/Medium/High priority level. The score indicates unusual
-exposure compared with the baseline; it does not prove that a vulnerability
-exists. Because the model is unsupervised, accuracy claims require a
-separately labeled evaluation dataset and are intentionally not fabricated
-by this project.
+The output is an anomaly score from 0 to 100 and a Low/Medium/High priority signal. It indicates unusual exposure relative to the baseline; it does **not** prove exploitability or the existence of a vulnerability. Accuracy claims require a separately labeled dataset.
 
-### Suggested academic evaluation
+## Application areas
 
-Record several simulated profiles with different service and vulnerability
-combinations. Compare feature vectors, anomaly scores, deterministic risk
-scores, and confirmed CVE matches. Report which evidence produced each
-priority decision, then discuss false positives, false negatives, baseline
-bias, and the limitation that simulated data is not a substitute for a
-real camera dataset.
+The Flask interface currently exposes:
 
-------------------------------------------------------------------------
+- **Home:** quick scan form and latest assessment summary
+- **Dashboard:** risk metrics, device exposure, findings, CVE context, and analytics
+- **Assets:** persistent asset inventory and risk state
+- **Devices:** device-level evidence and findings
+- **Reports:** historical assessments with PDF, CSV, and JSON exports
+- **Remediation:** finding-to-workflow guidance
+- **Alerts:** security-event review and acknowledgement
 
-## 🎯 Objectives
+## Architecture
 
--   Discover hosts and exposed network services within an authorized
-    scope.
--   Identify service names, products, versions, and CPE information
-    using Nmap.
--   Build a security-oriented fingerprint of discovered devices.
--   Detect potentially risky or exposed services such as Telnet, FTP,
-    RTSP, ONVIF, and HTTP.
--   Analyze known firmware/version information against local security
-    baselines.
--   Correlate sufficiently supported software evidence with CVE records.
--   Calculate a 0--100 risk score based on finding severity.
--   Generate remediation recommendations and security guidance.
--   Maintain historical scan reports and asset information.
--   Provide dashboard analytics for security review and prioritization.
--   Export assessment results in PDF, CSV, and JSON formats.
--   Provide REST API endpoints for integration with other security
-    tooling.
-
-------------------------------------------------------------------------
-
-## 🧩 Core Features
-
-### 1. Network Discovery
-
-Targets can be supplied as:
-
--   Individual IPv4 addresses
--   Hostnames
--   CIDR network ranges
--   Comma-separated target lists
-
-For CIDR ranges, Nmap host discovery is performed before individual
-service/version scans.
-
-For hostnames, the application resolves IPv4 addresses and attempts live
-scanning against the resolved addresses.
-
-------------------------------------------------------------------------
-
-### 2. Nmap Integration
-
-SecureVision uses Nmap for live network assessment.
-
-The host service scan uses:
-
-``` text
--Pn -sT -sV --reason
-```
-
-This provides:
-
--   TCP connect scanning
--   Service detection
--   Product identification
--   Version information
--   Port state
--   Nmap service name
--   Tunnel information
--   Detection reason
--   CPE information when reported by Nmap
-
-Example evidence captured by the scanner:
-
-``` text
-Port:       3306/tcp
-State:      open
-Service:    mysql
-Product:    MySQL
-Version:    8.0.44
-CPE:        cpe:/a:mysql:mysql:8.0.44
-```
-
-------------------------------------------------------------------------
-
-### 3. Device Fingerprinting
-
-The fingerprinting layer builds a structured device profile without
-inventing unsupported information.
-
-It can derive:
-
--   IP address
--   Vendor
--   Model
--   Firmware/version information
--   Device type
--   Platform/OS context
--   Architecture
--   Detection confidence
--   Observed products
--   Observed versions
--   Observed CPEs
--   Exposure profile
--   Nmap evidence
-
-Vendor/device intelligence includes surveillance-oriented profiles such
-as:
-
--   Hikvision
--   Dahua
--   Axis
--   Uniview
-
-The system also provides conservative service-based device
-classification when vendor-specific evidence is unavailable.
-
-------------------------------------------------------------------------
-
-### 4. Service Exposure Analysis
-
-The service detection layer maintains profiles for network services and
-evaluates their security exposure.
-
-Examples include:
-
-  Service   Example Risk
-  --------- --------------------------------------------
-  Telnet    High -- unencrypted remote access
-  RTSP      Medium -- video stream exposure
-  ONVIF     Medium -- device management exposure
-  FTP       Medium -- file transfer exposure
-  MySQL     Medium -- database exposure
-  HTTP      Low -- unencrypted web management exposure
-
-The application distinguishes **observed service exposure** from a
-confirmed CVE.
-
-------------------------------------------------------------------------
-
-### 5. Vulnerability & CVE Correlation
-
-SecureVision uses a conservative vulnerability-correlation approach.
-
-A generic service being open does **not** automatically produce a CVE.
-
-Instead, CVE correlation can use:
-
-``` text
-Observed Product
-       +
-Observed Version
-       +
-Service Context
-       +
-CPE Evidence
-       ↓
-CVE Match
-```
-
-CPE information reported by Nmap can be used to strengthen product
-identification and version correlation.
-
-The system records match evidence such as:
-
--   CVE ID
--   Title
--   Description
--   CVSS score
--   Severity
--   Exploitability
--   Match source
--   Observed CPE
--   References
-
-This design helps avoid reporting a CVE when the scanner does not have
-sufficient product/version evidence.
-
-------------------------------------------------------------------------
-
-### 6. Firmware Analysis
-
-The firmware analysis component maintains vendor-specific baselines for
-supported vendors.
-
-It can identify:
-
--   Current version
--   Latest baseline version
--   Outdated status
--   End-of-life status
--   Firmware upgrade guidance
-
-Supported vendor knowledge currently includes:
-
--   Hikvision
--   Dahua
--   Axis
--   Uniview
-
-Firmware being old is not automatically treated as proof that every CVE
-associated with that vendor applies. Confirmed vulnerability correlation
-is handled separately.
-
-------------------------------------------------------------------------
-
-### 7. Security Plugins
-
-The scanner includes a plugin architecture for service-specific checks.
-
-Current plugin areas include:
-
--   Telnet
--   RTSP
--   ONVIF
--   HTTP/HTTPS
--   FTP
-
-Plugins are discovered dynamically and use manifests to define metadata
-such as:
-
--   Plugin name
--   Description
--   Severity
--   Associated service
-
-This structure makes the scanner extensible without placing every
-service-specific check inside one large function.
-
-------------------------------------------------------------------------
-
-### 8. Risk Scoring
-
-Findings are assigned severity levels:
-
-``` text
-Critical
-High
-Medium
-Low
-Info
-```
-
-The current risk scoring model uses severity weights:
-
-``` text
-Critical = 40
-High     = 25
-Medium   = 12
-Low      = 4
-Info     = 1
-```
-
-The combined score is capped at:
-
-``` text
-100
-```
-
-This produces an easy-to-understand 0--100 risk score for
-prioritization.
-
-------------------------------------------------------------------------
-
-### 9. Intelligence & Remediation
-
-Findings can be enriched with security context such as:
-
--   Technical explanation
--   Business impact
--   Exploitability
--   Attack scenario
--   Risk justification
-
-The remediation engine provides actionable recommendations.
-
-Vendor-specific remediation guidance is available for supported
-surveillance vendors and common exposed services.
-
-Examples include:
-
--   Disable Telnet.
--   Restrict management services.
--   Enforce HTTPS.
--   Enable RTSP authentication.
--   Restrict ONVIF access.
--   Disable unnecessary FTP exposure.
--   Replace default credentials.
--   Upgrade firmware using the correct vendor/model package.
-
-------------------------------------------------------------------------
-
-### 10. Historical Database
-
-SecureVision uses SQLite for local persistence.
-
-The database stores assessment information including:
-
--   Reports
--   Devices
--   Findings
--   Assets
--   Intelligence
--   Risk scores
--   Scan history
-
-This enables historical review rather than treating each scan as an
-isolated operation.
-
-> For a production-scale deployment, an external persistent database
-> would be preferable to SQLite.
-
-------------------------------------------------------------------------
-
-### 11. Dashboard & Analytics
-
-The Flask web interface provides views for:
-
--   Dashboard
--   Devices
--   Device details
--   Assets
--   Reports
--   Remediation
--   Alerts
-
-Analytics are derived from persisted scan evidence.
-
-Examples include:
-
--   Risk distribution
--   CVE counts
--   CVE trends
--   Device risk timeline
--   Service exposure
--   Asset statistics
-
-The analytics layer intentionally avoids creating synthetic scan results
-when historical data is unavailable.
-
-------------------------------------------------------------------------
-
-### 12. Alerts
-
-The alerting engine supports security-event categories such as:
-
--   Risk threshold exceeded
--   Critical finding detected
--   New CVE detected
--   Firmware update available
--   Device offline
--   Default credential exposure
--   Dangerous service exposure
-
-Alerts can be stored and acknowledged through the application.
-
-------------------------------------------------------------------------
-
-### 13. Report Generation
-
-Assessment results can be exported in multiple formats:
-
-``` text
-PDF
-CSV
-JSON
-```
-
-The PDF report includes structured assessment information such as:
-
--   Executive summary
--   Target scope
--   Overall risk score
--   Device count
--   Finding count
--   Severity information
--   Vulnerability information
--   Recommendations
-
-------------------------------------------------------------------------
-
-### 14. REST API
-
-SecureVision provides REST API endpoints under:
-
-``` text
-/api/v1
-```
-
-The API contains areas for:
-
--   Health/status
--   Statistics
--   Assets
--   Findings
--   Reports
--   Devices
--   Scan operations
--   Remediation
--   Dashboard/integration functionality
-
-The current API documentation is available in:
-
-``` text
-API_DOCUMENTATION.md
-```
-
-> **Important:** The current API does not implement authentication. API
-> authentication should be added before exposing it in an untrusted
-> production environment.
-
-------------------------------------------------------------------------
-
-## 🏗️ Project Architecture
-
-``` text
+```text
 SecureVision VAPT
-│
-├── app.py
-├── wsgi.py
-├── requirements.txt
-├── Dockerfile
-├── render.yaml
-│
-├── api/
-│   ├── scan.py
-│   ├── dashboard.py
-│   ├── devices.py
-│   ├── reports.py
-│   ├── assets.py
-│   ├── export.py
-│   ├── remediation.py
-│   ├── alerts.py
-│   └── integration.py
-│
-├── core/
-│   ├── app_factory.py
-│   └── config.py
-│
-├── scanner/
-│   ├── nmap_scanner.py
-│   ├── discovery.py
-│   ├── fingerprint.py
-│   ├── vulnerability.py
-│   ├── cve_matcher.py
-│   ├── firmware_database.py
-│   ├── service_detector.py
-│   ├── os_detection.py
-│   ├── intelligence_enricher.py
-│   ├── recommendation_engine.py
-│   ├── remediation_guide.py
-│   ├── risk_score.py
-│   ├── analytics.py
-│   ├── alerting.py
-│   ├── report.py
-│   ├── report_generator.py
-│   ├── pipeline.py
-│   └── plugins/
-│
-├── database/
-│   ├── db.py
-│   ├── models.py
-│   └── assets.py
-│
-├── templates/
-│   └── Flask/Jinja web interface
-│
-├── static/
-│   └── CSS and frontend assets
-│
-├── data/
-│   ├── vendors.json
-│   └── default_credentials.json
-│
-└── tests/
-    └── automated tests
+├── app.py / wsgi.py              Application entry points
+├── core/                         App factory and configuration
+├── api/                          Flask routes, API, exports, alerts, remediation
+├── scanner/                      Discovery, Nmap, fingerprinting, CVE, scoring
+│   └── plugins/                  Service-specific security checks
+├── ml/                           Isolation Forest anomaly detection
+├── database/                     Persistence and data models
+├── templates/                    Jinja web interface
+├── static/                       CSS and frontend assets
+├── data/                         Vendor and credential intelligence
+├── tests/                        Automated tests
+├── Dockerfile                    Container runtime
+└── render.yaml                   Render deployment configuration
 ```
 
-------------------------------------------------------------------------
+### Scanner pipeline
 
-## 🔄 Assessment Workflow
+1. Parse and validate the target scope.
+2. Discover reachable hosts; for CIDR ranges, perform host discovery first.
+3. Run Nmap with `-Pn -sT -sV --reason`.
+4. Preserve service, product, version, state, tunnel, reason, and CPE evidence.
+5. Build a conservative device fingerprint.
+6. Run service plugins, credential checks, and firmware analysis.
+7. Correlate CVEs only where evidence supports the match.
+8. Calculate deterministic risk and ML anomaly signals.
+9. Persist reports, devices, findings, assets, and alerts.
+10. Present the result in the dashboard and export formats.
 
-A typical live assessment follows this sequence:
+## Technology stack
 
-### Step 1 --- Define Scope
+- **Python 3.11+** — application and scanner logic
+- **Flask / Jinja2** — web application and server-rendered UI
+- **Nmap / python-nmap** — network and service discovery
+- **scikit-learn** — Isolation Forest anomaly detection
+- **SQLite locally; PostgreSQL-compatible deployment path** — persistence
+- **ReportLab, Pandas, OpenPyXL** — report and data exports
+- **Gunicorn** — production WSGI server
+- **Docker and Render** — deployment options
 
-Example:
-
-``` text
-192.168.1.100
-```
-
-or:
-
-``` text
-192.168.1.0/24
-```
-
-or:
-
-``` text
-camera.example.local
-```
-
-### Step 2 --- Discover Hosts
-
-Nmap identifies active hosts within the defined scope.
-
-### Step 3 --- Detect Services
-
-The scanner identifies exposed ports and attempts service/version
-detection.
-
-### Step 4 --- Build Fingerprint
-
-The application processes Nmap evidence to determine available vendor,
-model, version, CPE, service, and device-type information.
-
-### Step 5 --- Analyze Security Exposure
-
-Service-specific plugins and security rules evaluate potentially risky
-configurations.
-
-### Step 6 --- Correlate Vulnerabilities
-
-Known vulnerability records are matched only when sufficient
-product/version/service evidence exists.
-
-### Step 7 --- Calculate Risk
-
-Finding severities are converted into an overall 0--100 risk score.
-
-### Step 8 --- Generate Recommendations
-
-The remediation engine provides prioritized security guidance.
-
-### Step 9 --- Persist Results
-
-Reports, devices, findings, and intelligence are stored in SQLite.
-
-### Step 10 --- Present Results
-
-Results become available through the dashboard, analytics, reports, and
-API.
-
-------------------------------------------------------------------------
-
-## 🛠️ Technology Stack
-
-  Technology    Purpose
-  ------------- ----------------------------------------------
-  Python        Core application and scanner logic
-  Flask         Web application and REST API
-  Nmap          Network/service discovery and fingerprinting
-  python-nmap   Python integration with Nmap
-  SQLite        Local persistence
-  SQLAlchemy    Database-related dependency
-  Jinja2        Server-side HTML templates
-  ReportLab     PDF report generation
-  Pandas        Data processing/export support
-  OpenPyXL      Spreadsheet-related export support
-  Gunicorn      Production WSGI server
-  Docker        Deployment/runtime environment
-  Render        Cloud deployment
-
-------------------------------------------------------------------------
-
-## 🚀 Local Setup
+## Local development
 
 ### Prerequisites
 
-Install:
-
--   Python 3.11+
--   Nmap
--   Git
+- Python 3.11 or newer
+- Nmap installed and available on `PATH` for live assessments
+- Git
 
 Verify Nmap:
 
-``` bash
+```bash
 nmap --version
 ```
 
-### Clone the repository
+### Install and run
 
-``` bash
+```powershell
 git clone <YOUR_GITHUB_REPOSITORY_URL>
 cd "SecureVision VAPT"
-```
-
-### Create a virtual environment
-
-Windows PowerShell:
-
-``` powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-### Install dependencies
-
-``` bash
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-### Start the application
-
-``` bash
 python app.py
 ```
 
-The application normally runs on:
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-``` text
-http://127.0.0.1:5000
-```
+The application uses local SQLite persistence by default. Copy `.env.example` to `.env` and configure environment-specific values when needed.
 
-------------------------------------------------------------------------
+### Docker
 
-## 🐳 Docker
-
-The repository includes a Dockerfile that installs Nmap inside the
-container and prepares the Flask application for deployment.
-
-Build:
-
-``` bash
+```bash
 docker build -t securevision-vapt .
+docker run --rm -p 5000:5000 securevision-vapt
 ```
 
-Run:
+The Docker image installs Nmap and runs the application with Gunicorn. The included [render.yaml](render.yaml) defines the Render web service and supports an externally configured `DATABASE_URL`.
 
-``` bash
-docker run -p 5000:5000 securevision-vapt
+### Render deployment
+
+The repository is configured for Render with:
+
+- `pip install -r requirements.txt` as the build command
+- `gunicorn -b 0.0.0.0:$PORT wsgi:app` as the start command
+- Generated `SECRET_KEY`
+- Optional `DATABASE_URL` for persistent PostgreSQL storage
+
+The free Render filesystem is ephemeral. Do not rely on local SQLite data surviving restarts or redeployments; use a managed persistent database for production continuity.
+
+## Testing and validation
+
+Run the automated suite with:
+
+```bash
+pytest
 ```
 
-For cloud deployment, the included `render.yaml` configures a Render web
-service using Gunicorn.
+Run the scanner integration flow with:
 
-------------------------------------------------------------------------
-
-## 🌐 Live Demo
-
-The current deployed application:
-
-**https://securevision-vapt.onrender.com**
-
-The live deployment is intended for demonstration and authorized testing
-only.
-
-Because the current Render configuration uses an ephemeral filesystem
-path for SQLite, persistent production data should not be assumed to
-survive service restarts/redeployments.
-
-------------------------------------------------------------------------
-
-## 🧪 Testing & Validation
-
-The project contains automated tests under:
-
-``` text
-tests/
-```
-
-and an Nmap integration flow under:
-
-``` text
-scanner/test_nmap_flow.py
-```
-
-Validation covers areas including:
-
--   Python compilation
--   Live discovery behavior
--   Prevention of silent simulated fallback
--   Nmap product/version evidence preservation
--   CPE-based vulnerability matching
--   Conservative CVE correlation
--   Plugin discovery and execution
--   Dashboard/report selection behavior
-
-Example local scanner flow:
-
-``` bash
+```bash
 python -m scanner.test_nmap_flow
 ```
 
-------------------------------------------------------------------------
+The tests cover CVE matching, simulated scan behavior, ML risk analysis, plugin discovery and execution, dashboard/report selection, and Nmap evidence preservation.
 
-## 🔐 Security Design Principles
+## REST API
 
-SecureVision follows several important defensive-security principles:
+Integration endpoints are available under `/api/v1`. The full reference is in [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
-### No silent simulation in live mode
+Common areas include:
 
-If Nmap fails during a live scan, the application exposes the failure
-instead of silently generating simulated devices.
+| Area | Examples |
+| --- | --- |
+| Health and statistics | `GET /api/v1/health`, `GET /api/v1/stats` |
+| Assets | `GET /api/v1/assets`, `GET /api/v1/assets/<asset_id>` |
+| Findings | `GET /api/v1/findings`, `GET /api/v1/findings/<finding_id>` |
+| Reports | `GET /api/v1/reports`, `GET /api/v1/reports/<report_id>` |
+| Devices | `GET /api/v1/devices`, `GET /api/v1/devices/<device_ip>` |
 
-### Evidence-based vulnerability correlation
+**Deployment note:** the current API does not implement authentication. Add API-key or OAuth2 protection before exposing these integration routes to an untrusted network.
 
-A generic service such as FTP or HTTP is not automatically treated as
-proof of a CVE.
+## Security principles
 
-### Conservative fingerprinting
+- **Authorization first:** only assess systems within an approved scope.
+- **No silent simulation:** live-mode failures remain visible to the operator.
+- **Evidence over assumptions:** product-specific findings require supporting evidence.
+- **Exposure is not automatically a CVE:** open RTSP, HTTP, FTP, or ONVIF services may be findings without being confirmed vulnerabilities.
+- **Conservative fingerprinting:** unknown vendor, model, and firmware fields are not invented.
+- **Explainable prioritization:** risk and anomaly outputs are presented as decision support, not proof of compromise.
 
-Vendor, model, and firmware information are not invented when Nmap
-evidence is insufficient.
+## Limitations
 
-### Scope-aware scanning
+- CVE coverage depends on the local vulnerability knowledge base and the quality of observed product/version evidence.
+- Firmware analysis is based on maintained local vendor baselines.
+- Network visibility, firewalls, authentication, and service banners affect assessment quality.
+- SQLite is appropriate for development and demonstrations, not large multi-user production workloads.
+- The platform is not a substitute for a full enterprise VAPT program or an authorized professional penetration test.
 
-The scanner should only be used against systems for which the operator
-has explicit authorization.
+## Further documentation
 
-### Separation of exposure findings and CVEs
+- [API_DOCUMENTATION.md](API_DOCUMENTATION.md) — REST API reference
+- [RESEARCH_PAPER_DRAFT.md](RESEARCH_PAPER_DRAFT.md) — research methodology, architecture, and evaluation draft
+- [VALIDATION.txt](VALIDATION.txt) — validation notes
+- [FIX_AUDIT.md](FIX_AUDIT.md) — development/fix audit
+- [Dockerfile](Dockerfile) — container configuration
+- [render.yaml](render.yaml) — Render service configuration
 
-An exposed service can be a security finding even when no specific CVE
-can be confidently correlated.
+## Responsible use
 
-------------------------------------------------------------------------
+SecureVision VAPT is defensive security software. Use it only against systems you own, systems for which you have written authorization, controlled laboratory targets, or intentionally provided security-testing environments. Do not scan or test third-party systems without permission.
 
-## 🤖 Machine Learning Component
+## License
 
-SecureVision includes an **ML-based exposure anomaly detection layer** implemented with **Isolation Forest** from scikit-learn.
-
-The model is intentionally separate from deterministic CVE matching and the existing severity-based risk score. It learns an exposure baseline and identifies device profiles that are unusual compared with that baseline.
-
-### ML features
-
-The model uses scanner-derived security evidence such as:
-
-- Number of open services
-- High-risk and medium-risk service counts
-- Unencrypted service count
-- Number of correlated CVEs
-- Maximum CVSS score
-- Potentially exploitable CVE evidence
-- Default credential exposure
-- Outdated firmware
-- End-of-life firmware
-- RTSP/ONVIF surveillance exposure
-
-The existing deterministic `risk_score` is deliberately **not** used as a model input, preventing circular learning from the rule-based score.
-
-### ML workflow
-
-```text
-Nmap / Security Evidence
-          ↓
-Feature Extraction
-          ↓
-Isolation Forest
-          ↓
-Anomaly Score (0–100)
-          ↓
-Low / Medium / High
-          ↓
-Risk Prioritization Support
-```
-
-The dashboard displays the ML anomaly score, risk level, and top contributing security signals. The ML result is a **prioritization signal**, not proof that a vulnerability or CVE exists.
-
-For first-run deployments, the model uses a small deterministic bootstrap baseline. As the project evolves, the baseline can be replaced or supplemented with historical authorized scan data. No ML accuracy claim is made from the bootstrap baseline because it is not a labeled benchmark dataset.
-
-## ⚠️ Limitations
-
--   CVE correlation depends on the local vulnerability knowledge base.
--   A CVE match is intentionally conservative and requires sufficient
-    evidence.
--   Firmware analysis uses maintained local vendor baselines.
--   SQLite is suitable for development/demo workloads but is not ideal
-    for large production deployments.
--   The current REST API does not provide authentication.
--   The project should not be treated as a replacement for a full
-    enterprise VAPT platform or professional penetration test.
--   Some device/vendor identification is dependent on the information
-    exposed by the target service.
--   Network visibility and firewall configuration can affect Nmap
-    results.
-
-------------------------------------------------------------------------
-
-## 🔮 Future Enhancements
-
-Potential future improvements include:
-
--   Machine-learning-based risk prediction
--   Larger and automatically updated CVE intelligence
--   NVD/CVE feed synchronization
--   User authentication
--   Role-based access control
--   Persistent PostgreSQL deployment
--   Background scan workers
--   Scheduled assessments
--   Email/SIEM notifications
--   More surveillance-device vendors
--   More service-specific plugins
--   Improved asset correlation
--   CI/CD security testing
--   Advanced vulnerability trend analysis
--   Authenticated device assessment
--   Enterprise-scale multi-user support
-
-------------------------------------------------------------------------
-
-## 👥 Project Structure for Academic Presentation
-
-The project can be explained through the following major modules:
-
-``` text
-Member / Module Area
-        │
-        ├── Web Application
-        │      └── Flask + Dashboard
-        │
-        ├── Network Security Scanner
-        │      └── Nmap + Discovery
-        │
-        ├── Vulnerability Analysis
-        │      └── Fingerprinting + CVE Correlation
-        │
-        ├── Risk & Intelligence
-        │      └── Scoring + Recommendations
-        │
-        └── Data & Reporting
-               └── SQLite + Analytics + PDF/API
-```
-
-------------------------------------------------------------------------
-
-## 📄 Additional Documentation
-
-  File                          Purpose
-  ----------------------------- -----------------------------------
-  `API_DOCUMENTATION.md`        REST API reference
-  `VALIDATION.txt`              Pipeline and CVE validation notes
-  `FIX_AUDIT.md`                Development/fix audit information
-  `scanner/test_nmap_flow.py`   Nmap integration flow
-  `Dockerfile`                  Container configuration
-  `render.yaml`                 Render deployment configuration
-
-------------------------------------------------------------------------
-
-## ⚖️ Responsible Use
-
-SecureVision VAPT is intended for **authorized security assessment and
-defensive purposes**.
-
-Only scan:
-
--   Systems you own
--   Systems you are explicitly authorized to assess
--   Controlled laboratory environments
--   Intentionally provided security-testing targets
-
-Do not use the platform to scan or test systems without permission.
-
-------------------------------------------------------------------------
-
-## 📜 License
-
-No explicit open-source license is currently defined in the project
-repository.
-
-If this project is published publicly, add an appropriate `LICENSE` file
-describing how others may use, modify, and distribute the software.
-
-------------------------------------------------------------------------
-
-## ⭐ Project Summary
-
-**SecureVision VAPT** brings together network discovery, security
-fingerprinting, vulnerability correlation, risk scoring, remediation
-guidance, historical asset tracking, analytics, and reporting into a
-single web-based platform.
-
-Its core design emphasizes **real scanner evidence, conservative
-vulnerability matching, explainable risk analysis, and actionable
-remediation** rather than treating every exposed service as a confirmed
-vulnerability.
+No open-source license is currently defined in this repository. Add a `LICENSE` file before publishing the project for reuse or redistribution.
